@@ -54,7 +54,7 @@ export function App() {
   const [overflow, setOverflow] = useState<Overflow>('scroll');
   const [showBackgrounds, setShowBackgrounds] = useState(true);
   const [lineNumbers, setLineNumbers] = useState(true);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
   const viewerRef = useRef<CodeViewHandle<undefined>>(null);
   const onTreeSelectionRef = useRef<(paths: readonly string[]) => void>(() => undefined);
   const { model: treeModel } = useFileTree({
@@ -96,18 +96,27 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    setCollapsedIds(new Set());
+  }, [response?.ref]);
+
   const parsed = useMemo<ParsedModel>(() => {
     if (response == null) {
       return INITIAL_PARSED_MODEL;
     }
     const patches = parsePatchFiles(response.patch, encodeURIComponent(response.ref));
-    return buildParsedModel(patches, collapsed);
-  }, [collapsed, response]);
+    return buildParsedModel(patches, collapsedIds);
+  }, [collapsedIds, response]);
+
+  const allCollapsed = parsed.items.length > 0 && parsed.items.every((item) => collapsedIds.has(item.id));
+  const toggleAllCollapsed = () => {
+    setCollapsedIds(allCollapsed ? new Set() : new Set(parsed.items.map((item) => item.id)));
+  };
 
   useEffect(() => {
     treeModel.resetPaths(parsed.paths);
     treeModel.setGitStatus(parsed.gitStatus);
-  }, [parsed.gitStatus, parsed.paths, treeModel]);
+  }, [response?.ref, treeModel]);
 
   useEffect(() => {
     onTreeSelectionRef.current = (paths) => {
@@ -158,8 +167,8 @@ export function App() {
           />
           <Toggle label="Lines" checked={lineNumbers} onChange={setLineNumbers} />
           <Toggle label="Background" checked={showBackgrounds} onChange={setShowBackgrounds} />
-          <button className="button" onClick={() => setCollapsed((value) => !value)}>
-            {collapsed ? 'Expand all' : 'Collapse all'}
+          <button className="button" onClick={toggleAllCollapsed}>
+            {allCollapsed ? 'Expand all' : 'Collapse all'}
           </button>
           <a className="button" href="/api/raw.diff" target="_blank" rel="noreferrer">Raw</a>
         </div>
@@ -180,7 +189,7 @@ export function App() {
         ) : (
           <CodeView
             ref={viewerRef}
-            key={`${response?.ref}:${collapsed ? 'collapsed' : 'expanded'}`}
+            key={response?.ref}
             items={parsed.items}
             disableWorkerPool
             className="codeView"
@@ -198,10 +207,24 @@ export function App() {
               stickyHeaders: true,
               layout: { paddingTop: 12, paddingBottom: 32, gap: 12 },
             }}
-            renderHeaderMetadata={(item) => {
+            renderCustomHeader={(item) => {
               if (item.type !== 'diff') return null;
-              const file = item.fileDiff;
-              return <FileMeta file={file} />;
+              return (
+                <DiffHeader
+                  item={item}
+                  onToggle={() => {
+                    setCollapsedIds((current) => {
+                      const next = new Set(current);
+                      if (next.has(item.id)) {
+                        next.delete(item.id);
+                      } else {
+                        next.add(item.id);
+                      }
+                      return next;
+                    });
+                  }}
+                />
+              );
             }}
           />
         )}
@@ -210,7 +233,7 @@ export function App() {
   );
 }
 
-function buildParsedModel(patches: ParsedPatch[], collapsed: boolean): ParsedModel {
+function buildParsedModel(patches: ParsedPatch[], collapsedIds: ReadonlySet<string>): ParsedModel {
   const items: CodeViewItem[] = [];
   const files: FileDiffMetadata[] = [];
   const paths: string[] = [];
@@ -234,12 +257,13 @@ function buildParsedModel(patches: ParsedPatch[], collapsed: boolean): ParsedMod
       stats.files++;
       stats.additions += additions;
       stats.deletions += deletions;
+      const isCollapsed = collapsedIds.has(itemId);
       items.push({
         id: itemId,
         type: 'diff',
         fileDiff,
-        collapsed,
-        version: collapsed ? 1 : 0,
+        collapsed: isCollapsed,
+        version: isCollapsed ? 1 : 0,
       } satisfies CodeViewDiffItem);
     }
   }
@@ -262,12 +286,55 @@ function countDeletions(file: FileDiffMetadata) {
   return file.hunks.reduce((total, hunk) => total + hunk.deletionLines, 0);
 }
 
+function DiffHeader({ item, onToggle }: { item: CodeViewDiffItem; onToggle: () => void }) {
+  const file = item.fileDiff;
+  return (
+    <div className="customFileHeader">
+      <button
+        type="button"
+        className="fileTitleButton"
+        aria-expanded={!item.collapsed}
+        onClick={onToggle}
+        title={item.collapsed ? 'Expand file' : 'Collapse file'}
+      >
+        <span className="chevron" aria-hidden="true">{item.collapsed ? '▸' : '▾'}</span>
+        <ChangeIcon type={file.type} />
+        <span className="fileTitleText">
+          {file.prevName != null && file.prevName !== file.name ? (
+            <>
+              <span>{file.prevName}</span>
+              <span className="renameArrow">→</span>
+            </>
+          ) : null}
+          <span>{file.name}</span>
+        </span>
+      </button>
+      <FileMeta file={file} />
+    </div>
+  );
+}
+
+function ChangeIcon({ type }: { type: FileDiffMetadata['type'] }) {
+  const label = type === 'new'
+    ? 'Added file'
+    : type === 'deleted'
+      ? 'Deleted file'
+      : type === 'rename-pure' || type === 'rename-changed'
+        ? 'Renamed file'
+        : 'Modified file';
+
+  return (
+    <span className="changeIcon" data-change-type={type} aria-label={label} title={label}>
+      {type === 'new' ? '+' : type === 'deleted' ? '−' : type === 'rename-pure' || type === 'rename-changed' ? '↪' : '●'}
+    </span>
+  );
+}
+
 function FileMeta({ file }: { file: FileDiffMetadata }) {
   const additions = countAdditions(file);
   const deletions = countDeletions(file);
   return (
     <span className="fileMeta">
-      {file.prevName != null && file.prevName !== file.name ? <span>{file.prevName} → </span> : null}
       <span>{file.type}</span>
       <span className="plus">+{additions}</span>
       <span className="minus">−{deletions}</span>

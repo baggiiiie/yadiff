@@ -82,8 +82,63 @@ h1 span { color: #a1a1aa; font-family: ui-monospace, SFMono-Regular, Menlo, mono
 .treeHeader { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; color: #d4d4d8; font-size: 12px; }
 
 .viewer { grid-area: viewer; min-height: 0; min-width: 0; padding: 0; }
-.codeView { height: 100%; }
-.fileMeta { display: inline-flex; gap: 8px; align-items: center; color: #a1a1aa; font-size: 12px; }
+.codeView {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.customFileHeader {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.fileTitleButton {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.fileTitleButton:hover .fileTitleText { text-decoration: underline; }
+.chevron { width: 1em; color: #a1a1aa; flex: none; }
+.changeIcon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 800;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: rgba(250, 204, 21, 0.14);
+  color: #facc15;
+}
+.changeIcon[data-change-type='new'] { background: rgba(74, 222, 128, 0.14); color: #4ade80; }
+.changeIcon[data-change-type='deleted'] { background: rgba(248, 113, 113, 0.14); color: #f87171; }
+.changeIcon[data-change-type='rename-pure'],
+.changeIcon[data-change-type='rename-changed'] { background: rgba(96, 165, 250, 0.14); color: #60a5fa; }
+.fileTitleText {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.renameArrow { color: #a1a1aa; }
+.fileMeta { display: inline-flex; gap: 8px; align-items: center; color: #a1a1aa; font-size: 12px; flex: none; }
 .empty { padding: 32px; color: #a1a1aa; }
 
 .shell { height: 100%; display: grid; place-items: center; background: #09090b; }

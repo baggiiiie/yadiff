@@ -12,24 +12,34 @@ const projectRoot = resolve(__dirname, '..');
 
 function printUsage() {
   console.log(`Usage: diffshub-local <git-ref-or-range> [options]
+       diffshub-local --working [options]
+       diffshub-local --staged [options]
+       diffshub-local --dirty [options]
 
 Examples:
   diffshub-local abc123
   diffshub-local main..feature
   diffshub-local main...HEAD --repo ../my-repo
+  diffshub-local --working
+  diffshub-local --staged
+  diffshub-local --dirty
 
 Options:
-  --repo <path>       Git repository to inspect (default: current directory)
-  --port <number>    Port to listen on (default: 5177)
-  --host <host>      Host to bind (default: 127.0.0.1)
-  --no-open          Do not open the browser automatically
-  -h, --help         Show this help
+  --working          Show unstaged tracked-file changes (git diff)
+  --staged           Show staged changes (git diff --cached)
+  --dirty            Show staged + unstaged tracked-file changes (git diff HEAD)
+  --repo <path>      Git repository to inspect (default: current directory)
+  --port <number>   Port to listen on (default: 5177)
+  --host <host>     Host to bind (default: 127.0.0.1)
+  --no-open         Do not open the browser automatically
+  -h, --help        Show this help
 `);
 }
 
 function parseArgs(argv) {
   const args = {
     ref: undefined,
+    mode: undefined,
     repo: process.cwd(),
     port: 5177,
     host: '127.0.0.1',
@@ -40,12 +50,17 @@ function parseArgs(argv) {
     const arg = argv[index];
     if (arg === '-h' || arg === '--help') {
       args.help = true;
+    } else if (arg === '--working' || arg === '--staged' || arg === '--dirty') {
+      if (args.mode != null) {
+        throw new Error(`Only one diff mode can be used at a time: ${args.mode} and ${arg}`);
+      }
+      args.mode = arg.slice(2);
     } else if (arg === '--repo') {
-      args.repo = argv[++index];
+      args.repo = requireValue(argv, ++index, '--repo');
     } else if (arg === '--port') {
-      args.port = Number(argv[++index]);
+      args.port = Number(requireValue(argv, ++index, '--port'));
     } else if (arg === '--host') {
-      args.host = argv[++index];
+      args.host = requireValue(argv, ++index, '--host');
     } else if (arg === '--no-open') {
       args.open = false;
     } else if (arg?.startsWith('--')) {
@@ -60,8 +75,19 @@ function parseArgs(argv) {
   if (!Number.isFinite(args.port) || args.port <= 0) {
     throw new Error('--port must be a positive number');
   }
+  if (args.ref != null && args.mode != null) {
+    throw new Error('Pass either a git ref/range or one of --working, --staged, --dirty, not both.');
+  }
 
   return args;
+}
+
+function requireValue(argv, index, flag) {
+  const value = argv[index];
+  if (value == null || value.startsWith('--')) {
+    throw new Error(`${flag} requires a value`);
+  }
+  return value;
 }
 
 function runGitSync(repo, args) {
@@ -95,12 +121,34 @@ function runGit(repo, args) {
   });
 }
 
-function getPatchArgs(ref) {
+function getPatchArgs(args) {
   const common = ['--find-renames', '--find-copies', '--no-ext-diff', '--no-color'];
-  if (ref.includes('..')) {
-    return ['diff', ...common, '--patch', ref, '--'];
+  if (args.mode === 'working') {
+    return ['diff', ...common, '--patch', '--'];
   }
-  return ['show', ...common, '--format=fuller', '--patch', ref, '--'];
+  if (args.mode === 'staged') {
+    return ['diff', ...common, '--cached', '--patch', '--'];
+  }
+  if (args.mode === 'dirty') {
+    return ['diff', ...common, '--patch', 'HEAD', '--'];
+  }
+  if (args.ref.includes('..')) {
+    return ['diff', ...common, '--patch', args.ref, '--'];
+  }
+  return ['show', ...common, '--format=fuller', '--patch', args.ref, '--'];
+}
+
+function getDisplayRef(args) {
+  if (args.mode === 'working') {
+    return '--working';
+  }
+  if (args.mode === 'staged') {
+    return '--staged';
+  }
+  if (args.mode === 'dirty') {
+    return '--dirty';
+  }
+  return args.ref;
 }
 
 async function main() {
@@ -109,22 +157,23 @@ async function main() {
     printUsage();
     return;
   }
-  if (args.ref == null) {
+  if (args.ref == null && args.mode == null) {
     printUsage();
     process.exitCode = 1;
     return;
   }
 
+  const displayRef = getDisplayRef(args);
   const repoRoot = runGitSync(args.repo, ['rev-parse', '--show-toplevel']);
   const repositoryName = repoRoot.split('/').filter(Boolean).at(-1) ?? repoRoot;
 
   const app = express();
   app.get('/api/diff', async (_req, res) => {
     try {
-      const patch = await runGit(repoRoot, getPatchArgs(args.ref));
+      const patch = await runGit(repoRoot, getPatchArgs(args));
       const head = runGitSync(repoRoot, ['rev-parse', '--short', 'HEAD']);
       res.json({
-        ref: args.ref,
+        ref: displayRef,
         repositoryName,
         repoRoot,
         head,
@@ -138,7 +187,7 @@ async function main() {
 
   app.get('/api/raw.diff', async (_req, res) => {
     try {
-      const patch = await runGit(repoRoot, getPatchArgs(args.ref));
+      const patch = await runGit(repoRoot, getPatchArgs(args));
       res.type('text/plain').send(patch);
     } catch (error) {
       res.status(500).type('text/plain').send(error instanceof Error ? error.message : String(error));
@@ -157,7 +206,7 @@ async function main() {
   const url = `http://${args.host}:${args.port}/`;
   console.log(`Local DiffsHub: ${url}`);
   console.log(`Repo: ${repoRoot}`);
-  console.log(`Ref:  ${args.ref}`);
+  console.log(`Ref:  ${displayRef}`);
 
   if (args.open) {
     const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
