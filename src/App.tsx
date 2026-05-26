@@ -55,6 +55,7 @@ export function App() {
   const [showBackgrounds, setShowBackgrounds] = useState(true);
   const [lineNumbers, setLineNumbers] = useState(true);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
+  const [pendingTreeScrollItemId, setPendingTreeScrollItemId] = useState<string | null>(null);
   const viewerRef = useRef<CodeViewHandle<undefined>>(null);
   const onTreeSelectionRef = useRef<(paths: readonly string[]) => void>(() => undefined);
   const { model: treeModel } = useFileTree({
@@ -128,9 +129,39 @@ export function App() {
       if (itemId == null) {
         return;
       }
-      viewerRef.current?.scrollTo({ type: 'item', id: itemId, align: 'start', behavior: 'smooth-auto' });
+      setPendingTreeScrollItemId(itemId);
+      setCollapsedIds((current) => {
+        if (!current.has(itemId)) {
+          return current;
+        }
+        const next = new Set(current);
+        next.delete(itemId);
+        return next;
+      });
     };
   }, [parsed.itemIdByPath]);
+
+  useEffect(() => {
+    if (pendingTreeScrollItemId == null) {
+      return;
+    }
+
+    const item = parsed.items.find((item) => item.id === pendingTreeScrollItemId);
+    if (item?.collapsed === true) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      viewerRef.current?.scrollTo({
+        type: 'item',
+        id: pendingTreeScrollItemId,
+        align: 'start',
+        behavior: 'smooth-auto',
+      });
+      setPendingTreeScrollItemId(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [parsed.items, pendingTreeScrollItemId]);
 
   if (loadState === 'loading') {
     return <Shell message="Fetching diff from local git…" />;

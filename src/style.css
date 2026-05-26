@@ -91,6 +91,9 @@ h1 span { color: #a1a1aa; font-family: ui-monospace, SFMono-Regular, Menlo, mono
 .customFileHeader {
   width: 100%;
   min-width: 0;
+  height: 44px;
+  padding-inline: 16px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
