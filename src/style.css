@@ -55,21 +55,23 @@ h1 span { color: #a1a1aa; font-family: ui-monospace, SFMono-Regular, Menlo, mono
 .plus { color: #4ade80; }
 .minus { color: #f87171; }
 
-.controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-.segmented { display: inline-flex; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 999px; padding: 2px; background: rgba(255,255,255,0.04); }
-.segmented button, .button {
-  border: 0;
-  color: #d4d4d8;
-  background: transparent;
+.controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.button {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 999px;
-  padding: 5px 10px;
+  background: rgba(255,255,255,0.04);
+  color: #d4d4d8;
+  font-size: 12px;
+  padding: 4px 10px;
   cursor: pointer;
   text-decoration: none;
 }
-.segmented button.active, .button:hover { background: rgba(255, 255, 255, 0.11); color: white; }
+.button:hover,
+.button.active { background: rgba(255, 255, 255, 0.14); color: white; }
 .copyStatus { color: #a1a1aa; font-size: 12px; }
-.toggle { display: inline-flex; align-items: center; gap: 5px; color: #d4d4d8; font-size: 13px; }
-.toggle input { accent-color: #60a5fa; }
 
 .sidebar {
   grid-area: sidebar;

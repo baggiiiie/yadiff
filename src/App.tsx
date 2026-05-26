@@ -2,7 +2,7 @@ import { parsePatchFiles, type AnnotationSide, type CodeViewDiffItem, type CodeV
 import { CodeView, type CodeViewHandle } from '@pierre/diffs/react';
 import type { GitStatusEntry } from '@pierre/trees';
 import { FileTree, useFileTree } from '@pierre/trees/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 
 type DiffStyle = 'split' | 'unified';
 type Overflow = 'scroll' | 'wrap';
@@ -249,25 +249,23 @@ export function App() {
           Powered by Diffs and Trees
         </a>
         <div className="controls">
-          <Segmented<DiffStyle>
-            label="Diff style"
-            value={diffStyle}
-            options={[['split', 'Split'], ['unified', 'Unified']]}
-            onChange={setDiffStyle}
-          />
-          <Segmented<Overflow>
-            label="Overflow"
-            value={overflow}
-            options={[['scroll', 'Scroll'], ['wrap', 'Wrap']]}
-            onChange={setOverflow}
-          />
-          <Toggle label="Lines" checked={lineNumbers} onChange={setLineNumbers} />
-          <Toggle label="Background" checked={showBackgrounds} onChange={setShowBackgrounds} />
-          <button className="button" onClick={toggleAllCollapsed}>
-            {allCollapsed ? 'Expand all' : 'Collapse all'}
-          </button>
-          <button className="button" onClick={copyReviews}>
-            Copy reviews ({reviews.length})
+          <PillButton active={diffStyle === 'unified'} onClick={() => setDiffStyle(diffStyle === 'unified' ? 'split' : 'unified')}>
+            Unified
+          </PillButton>
+          <PillButton active={overflow === 'wrap'} onClick={() => setOverflow(overflow === 'wrap' ? 'scroll' : 'wrap')}>
+            Wrap
+          </PillButton>
+          <PillButton active={lineNumbers} onClick={() => setLineNumbers((value) => !value)}>
+            Lines
+          </PillButton>
+          <PillButton active={showBackgrounds} onClick={() => setShowBackgrounds((value) => !value)}>
+            Background
+          </PillButton>
+          <PillButton active={allCollapsed} onClick={toggleAllCollapsed} title={allCollapsed ? 'Expand all files' : 'Collapse all files'}>
+            Collapse
+          </PillButton>
+          <button className="button" onClick={copyReviews} title="Copy reviews">
+            Reviews ({reviews.length})
           </button>
           {copyStatus !== 'idle' ? <span className="copyStatus">{formatCopyStatus(copyStatus)}</span> : null}
           <a className="button" href="/api/raw.diff" target="_blank" rel="noreferrer">Raw</a>
@@ -622,33 +620,26 @@ function Shell({ message, details }: { message: string; details?: string }) {
   );
 }
 
-function Segmented<T extends string>({ label, value, options, onChange }: {
-  label: string;
-  value: T;
-  options: readonly (readonly [T, string])[];
-  onChange: (value: T) => void;
+function PillButton({
+  active,
+  children,
+  onClick,
+  title,
+}: {
+  active?: boolean;
+  children: ReactNode;
+  onClick: () => void;
+  title?: string;
 }) {
   return (
-    <div className="segmented" aria-label={label}>
-      {options.map(([optionValue, text]) => (
-        <button
-          key={optionValue}
-          className={optionValue === value ? 'active' : undefined}
-          onClick={() => onChange(optionValue)}
-          type="button"
-        >
-          {text}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  return (
-    <label className="toggle">
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.currentTarget.checked)} />
-      <span>{label}</span>
-    </label>
+    <button
+      type="button"
+      className={active ? 'button active' : 'button'}
+      aria-pressed={active}
+      onClick={onClick}
+      title={title}
+    >
+      {children}
+    </button>
   );
 }
