@@ -183,6 +183,15 @@ export function App() {
           <span className="plus">+{parsed.stats.additions}</span>
           <span className="minus">−{parsed.stats.deletions}</span>
         </div>
+        <a
+          className="poweredBy"
+          href="https://github.com/pierrecomputer/pierre/tree/main/packages"
+          target="_blank"
+          rel="noreferrer"
+          title="Powered by @pierre/diffs and @pierre/trees"
+        >
+          Powered by Diffs and Trees
+        </a>
         <div className="controls">
           <Segmented<DiffStyle>
             label="Diff style"

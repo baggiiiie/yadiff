@@ -45,6 +45,13 @@ h1 span { color: #a1a1aa; font-family: ui-monospace, SFMono-Regular, Menlo, mono
   white-space: nowrap;
   margin-right: auto;
 }
+.poweredBy {
+  color: #a1a1aa;
+  font-size: 12px;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.poweredBy:hover { color: #f4f4f5; text-decoration: underline; }
 .plus { color: #4ade80; }
 .minus { color: #f87171; }
 
