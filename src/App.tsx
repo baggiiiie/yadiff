@@ -1,4 +1,4 @@
-import { parsePatchFiles, type CodeViewDiffItem, type CodeViewItem, type FileDiffMetadata, type ParsedPatch } from '@pierre/diffs';
+import { parsePatchFiles, type AnnotationSide, type CodeViewDiffItem, type CodeViewItem, type DiffLineAnnotation, type FileDiffMetadata, type ParsedPatch } from '@pierre/diffs';
 import { CodeView, type CodeViewHandle } from '@pierre/diffs/react';
 import type { GitStatusEntry } from '@pierre/trees';
 import { FileTree, useFileTree } from '@pierre/trees/react';
@@ -24,9 +24,42 @@ interface FileStats {
   files: number;
 }
 
+interface LineReview {
+  kind: 'saved';
+  id: string;
+  itemId: string;
+  path: string;
+  lineNumber: number;
+  side: AnnotationSide;
+  body: string;
+}
+
+interface DraftReview {
+  kind: 'draft';
+  id: string;
+  itemId: string;
+  path: string;
+  lineNumber: number;
+  side: AnnotationSide;
+  body: string;
+}
+
+type ReviewAnnotation = LineReview | DraftReview;
+
+const REVIEW_UNSAFE_CSS = `
+  [data-line-annotation],
+  [data-gutter-buffer='annotation'] {
+    --diffs-annotation-bg: var(--diffs-bg) !important;
+    --diffs-computed-decoration-bg: var(--diffs-bg) !important;
+    --diffs-computed-diff-line-bg: var(--diffs-bg) !important;
+    --diffs-computed-selected-line-bg: var(--diffs-bg) !important;
+    --diffs-line-bg: var(--diffs-bg) !important;
+  }
+`;
+
 interface ParsedModel {
   patches: ParsedPatch[];
-  items: CodeViewItem[];
+  items: CodeViewItem<ReviewAnnotation>[];
   files: FileDiffMetadata[];
   paths: string[];
   itemIdByPath: Map<string, string>;
@@ -56,7 +89,10 @@ export function App() {
   const [lineNumbers, setLineNumbers] = useState(true);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
   const [pendingTreeScrollItemId, setPendingTreeScrollItemId] = useState<string | null>(null);
-  const viewerRef = useRef<CodeViewHandle<undefined>>(null);
+  const [reviews, setReviews] = useState<LineReview[]>([]);
+  const [draftReview, setDraftReview] = useState<DraftReview | null>(null);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'empty' | 'error'>('idle');
+  const viewerRef = useRef<CodeViewHandle<ReviewAnnotation>>(null);
   const onTreeSelectionRef = useRef<(paths: readonly string[]) => void>(() => undefined);
   const { model: treeModel } = useFileTree({
     paths: [],
@@ -99,6 +135,9 @@ export function App() {
 
   useEffect(() => {
     setCollapsedIds(new Set());
+    setReviews([]);
+    setDraftReview(null);
+    setCopyStatus('idle');
   }, [response?.ref]);
 
   const parsed = useMemo<ParsedModel>(() => {
@@ -106,12 +145,29 @@ export function App() {
       return INITIAL_PARSED_MODEL;
     }
     const patches = parsePatchFiles(response.patch, encodeURIComponent(response.ref));
-    return buildParsedModel(patches, collapsedIds);
-  }, [collapsedIds, response]);
+    return buildParsedModel(patches, collapsedIds, reviews, draftReview);
+  }, [collapsedIds, draftReview, response, reviews]);
 
   const allCollapsed = parsed.items.length > 0 && parsed.items.every((item) => collapsedIds.has(item.id));
   const toggleAllCollapsed = () => {
     setCollapsedIds(allCollapsed ? new Set() : new Set(parsed.items.map((item) => item.id)));
+  };
+
+  const copyReviews = async () => {
+    if (reviews.length === 0) {
+      setCopyStatus('empty');
+      return;
+    }
+
+    const text = reviews
+      .map((review) => `${review.path}:${review.lineNumber}, ${review.body}`)
+      .join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyStatus('copied');
+    } catch {
+      setCopyStatus('error');
+    }
   };
 
   useEffect(() => {
@@ -210,6 +266,10 @@ export function App() {
           <button className="button" onClick={toggleAllCollapsed}>
             {allCollapsed ? 'Expand all' : 'Collapse all'}
           </button>
+          <button className="button" onClick={copyReviews}>
+            Copy reviews ({reviews.length})
+          </button>
+          {copyStatus !== 'idle' ? <span className="copyStatus">{formatCopyStatus(copyStatus)}</span> : null}
           <a className="button" href="/api/raw.diff" target="_blank" rel="noreferrer">Raw</a>
         </div>
       </header>
@@ -243,9 +303,76 @@ export function App() {
               collapsedContextThreshold: 2,
               expansionLineCount: 50,
               lineHoverHighlight: 'both',
-              enableLineSelection: true,
+              enableGutterUtility: true,
+              enableLineSelection: false,
               stickyHeaders: true,
+              unsafeCSS: REVIEW_UNSAFE_CSS,
               layout: { paddingTop: 12, paddingBottom: 32, gap: 12 },
+              onGutterUtilityClick: (range, context) => {
+                if (context.item.type !== 'diff') {
+                  return;
+                }
+                const side = normalizeReviewSide(range.endSide ?? range.side);
+                const lineNumber = range.end;
+                const path = context.item.fileDiff.name || context.item.fileDiff.prevName || context.item.id;
+                setDraftReview({
+                  kind: 'draft',
+                  id: `draft:${context.item.id}:${side}:${lineNumber}`,
+                  itemId: context.item.id,
+                  path,
+                  lineNumber,
+                  side,
+                  body: '',
+                });
+                setCopyStatus('idle');
+              },
+            }}
+            renderAnnotation={(annotation) => {
+              const review = annotation.metadata;
+              if (review == null) {
+                return null;
+              }
+              if (review.kind === 'draft') {
+                return (
+                  <DraftReviewBox
+                    draft={review}
+                    onChange={(body) => setDraftReview((current) => current?.id === review.id ? { ...current, body } : current)}
+                    onCancel={() => setDraftReview((current) => current?.id === review.id ? null : current)}
+                    onSave={() => {
+                      const body = review.body.trim();
+                      if (body.length === 0) {
+                        return;
+                      }
+                      setReviews((current) => [
+                        ...current,
+                        {
+                          kind: 'saved',
+                          id: `${review.itemId}:${review.side}:${review.lineNumber}:${Date.now()}`,
+                          itemId: review.itemId,
+                          path: review.path,
+                          lineNumber: review.lineNumber,
+                          side: review.side,
+                          body,
+                        },
+                      ]);
+                      setDraftReview(null);
+                    }}
+                  />
+                );
+              }
+              return (
+                <div className="reviewAnnotation">
+                  <div className="reviewAnnotationMeta">{review.path}:{review.lineNumber}</div>
+                  <div className="reviewAnnotationBody">{review.body}</div>
+                  <button
+                    type="button"
+                    className="reviewAnnotationDelete"
+                    onClick={() => setReviews((current) => current.filter((item) => item.id !== review.id))}
+                  >
+                    Delete
+                  </button>
+                </div>
+              );
             }}
             renderCustomHeader={(item) => {
               if (item.type !== 'diff') return null;
@@ -273,8 +400,13 @@ export function App() {
   );
 }
 
-function buildParsedModel(patches: ParsedPatch[], collapsedIds: ReadonlySet<string>): ParsedModel {
-  const items: CodeViewItem[] = [];
+function buildParsedModel(
+  patches: ParsedPatch[],
+  collapsedIds: ReadonlySet<string>,
+  reviews: readonly LineReview[],
+  draftReview: DraftReview | null
+): ParsedModel {
+  const items: CodeViewItem<ReviewAnnotation>[] = [];
   const files: FileDiffMetadata[] = [];
   const paths: string[] = [];
   const itemIdByPath = new Map<string, string>();
@@ -298,17 +430,71 @@ function buildParsedModel(patches: ParsedPatch[], collapsedIds: ReadonlySet<stri
       stats.additions += additions;
       stats.deletions += deletions;
       const isCollapsed = collapsedIds.has(itemId);
+      const annotations: DiffLineAnnotation<ReviewAnnotation>[] = reviews
+        .filter((review) => review.itemId === itemId)
+        .map((review) => ({
+          side: review.side,
+          lineNumber: review.lineNumber,
+          metadata: review,
+        }));
+      if (draftReview?.itemId === itemId) {
+        annotations.push({
+          side: draftReview.side,
+          lineNumber: draftReview.lineNumber,
+          metadata: draftReview,
+        });
+      }
       items.push({
         id: itemId,
         type: 'diff',
         fileDiff,
+        annotations,
         collapsed: isCollapsed,
-        version: isCollapsed ? 1 : 0,
-      } satisfies CodeViewDiffItem);
+        version: getItemVersion(isCollapsed, annotations),
+      } satisfies CodeViewDiffItem<ReviewAnnotation>);
     }
   }
 
   return { patches, items, files, paths: Array.from(new Set(paths)), itemIdByPath, stats, gitStatus };
+}
+
+function getItemVersion(
+  isCollapsed: boolean,
+  annotations: readonly DiffLineAnnotation<ReviewAnnotation>[]
+): number {
+  let hash = isCollapsed ? 17 : 31;
+  for (const annotation of annotations) {
+    const metadata = annotation.metadata;
+    hash = hashNumber(hash, annotation.lineNumber);
+    hash = hashString(hash, annotation.side);
+    if (metadata != null) {
+      hash = hashString(hash, metadata.id);
+      hash = hashString(hash, metadata.body);
+      hash = hashString(hash, metadata.kind);
+    }
+  }
+  return hash;
+}
+
+function hashNumber(hash: number, value: number): number {
+  return (Math.imul(hash, 33) + value) >>> 0;
+}
+
+function hashString(hash: number, value: string): number {
+  for (let index = 0; index < value.length; index++) {
+    hash = (Math.imul(hash, 33) + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+function normalizeReviewSide(side: AnnotationSide | undefined): AnnotationSide {
+  return side ?? 'additions';
+}
+
+function formatCopyStatus(status: 'copied' | 'empty' | 'error') {
+  if (status === 'copied') return 'Copied';
+  if (status === 'empty') return 'No reviews';
+  return 'Copy failed';
 }
 
 function statusForFile(file: FileDiffMetadata): GitStatusEntry['status'] {
@@ -326,7 +512,40 @@ function countDeletions(file: FileDiffMetadata) {
   return file.hunks.reduce((total, hunk) => total + hunk.deletionLines, 0);
 }
 
-function DiffHeader({ item, onToggle }: { item: CodeViewDiffItem; onToggle: () => void }) {
+function DraftReviewBox({
+  draft,
+  onCancel,
+  onChange,
+  onSave,
+}: {
+  draft: DraftReview;
+  onCancel: () => void;
+  onChange: (body: string) => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="reviewAnnotation reviewDraft">
+      <div className="reviewAnnotationMeta">{draft.path}:{draft.lineNumber}</div>
+      <textarea
+        autoFocus
+        className="reviewTextarea"
+        placeholder="Leave a review comment"
+        value={draft.body}
+        onChange={(event) => onChange(event.currentTarget.value)}
+      />
+      <div className="reviewDraftActions">
+        <button type="button" className="reviewSaveButton" onClick={onSave} disabled={draft.body.trim().length === 0}>
+          Add review
+        </button>
+        <button type="button" className="reviewCancelButton" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DiffHeader({ item, onToggle }: { item: CodeViewDiffItem<ReviewAnnotation>; onToggle: () => void }) {
   const file = item.fileDiff;
   return (
     <div className="customFileHeader">

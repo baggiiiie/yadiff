@@ -67,6 +67,7 @@ h1 span { color: #a1a1aa; font-family: ui-monospace, SFMono-Regular, Menlo, mono
   text-decoration: none;
 }
 .segmented button.active, .button:hover { background: rgba(255, 255, 255, 0.11); color: white; }
+.copyStatus { color: #a1a1aa; font-size: 12px; }
 .toggle { display: inline-flex; align-items: center; gap: 5px; color: #d4d4d8; font-size: 13px; }
 .toggle input { accent-color: #60a5fa; }
 
@@ -149,6 +150,51 @@ h1 span { color: #a1a1aa; font-family: ui-monospace, SFMono-Regular, Menlo, mono
 }
 .renameArrow { color: #a1a1aa; }
 .fileMeta { display: inline-flex; gap: 8px; align-items: center; color: #a1a1aa; font-size: 12px; flex: none; }
+.reviewAnnotation {
+  margin: 8px 16px 10px 88px;
+  padding: 10px 12px;
+  border: 1px solid rgba(82, 82, 91, 0.9);
+  border-radius: 10px;
+  background: #18181b;
+  color: #e4e4e7;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  white-space: normal;
+}
+.reviewDraft { border-color: rgba(96, 165, 250, 0.45); }
+.reviewAnnotationMeta { color: #93c5fd; font-size: 12px; margin-bottom: 8px; }
+.reviewAnnotationBody { line-height: 1.45; }
+.reviewTextarea {
+  display: block;
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+  border: 1px solid rgba(82, 82, 91, 0.95);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #09090b;
+  color: #f4f4f5;
+  outline: none;
+  line-height: 1.45;
+}
+.reviewTextarea:focus { border-color: #60a5fa; box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16); }
+.reviewDraftActions { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.reviewSaveButton,
+.reviewCancelButton,
+.reviewAnnotationDelete {
+  border: 0;
+  border-radius: 999px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.reviewSaveButton { color: #052e16; background: #4ade80; font-weight: 650; }
+.reviewSaveButton:disabled { cursor: not-allowed; opacity: 0.5; }
+.reviewCancelButton { color: #d4d4d8; background: rgba(255, 255, 255, 0.09); }
+.reviewAnnotationDelete {
+  margin-top: 8px;
+  color: #fca5a5;
+  background: rgba(248, 113, 113, 0.12);
+}
+.reviewAnnotationDelete:hover { background: rgba(248, 113, 113, 0.2); }
 .empty { padding: 32px; color: #a1a1aa; }
 
 .shell { height: 100%; display: grid; place-items: center; background: #09090b; }
