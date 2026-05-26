@@ -153,9 +153,14 @@ export function App() {
     setCollapsedIds(allCollapsed ? new Set() : new Set(parsed.items.map((item) => item.id)));
   };
 
+  const showCopyStatus = (status: 'copied' | 'empty' | 'error') => {
+    setCopyStatus(status);
+    window.setTimeout(() => setCopyStatus('idle'), status === 'error' ? 2000 : 1500);
+  };
+
   const copyReviews = async () => {
     if (reviews.length === 0) {
-      setCopyStatus('empty');
+      showCopyStatus('empty');
       return;
     }
 
@@ -164,11 +169,13 @@ export function App() {
       .join('\n');
     try {
       await navigator.clipboard.writeText(text);
-      setCopyStatus('copied');
+      showCopyStatus('copied');
     } catch {
-      setCopyStatus('error');
+      showCopyStatus('error');
     }
   };
+
+  const reviewButtonLabel = copyStatus === 'idle' ? `Reviews (${reviews.length})` : formatCopyStatus(copyStatus);
 
   useEffect(() => {
     treeModel.resetPaths(parsed.paths);
@@ -264,10 +271,9 @@ export function App() {
           <PillButton active={allCollapsed} onClick={toggleAllCollapsed} title={allCollapsed ? 'Expand all files' : 'Collapse all files'}>
             Collapse
           </PillButton>
-          <button className="button" onClick={copyReviews} title="Copy reviews">
-            Reviews ({reviews.length})
+          <button className={copyStatus === 'idle' ? 'button' : `button status-${copyStatus}`} onClick={copyReviews} title="Copy reviews">
+            {reviewButtonLabel}
           </button>
-          {copyStatus !== 'idle' ? <span className="copyStatus">{formatCopyStatus(copyStatus)}</span> : null}
           <a className="button" href="/api/raw.diff" target="_blank" rel="noreferrer">Raw</a>
         </div>
       </header>

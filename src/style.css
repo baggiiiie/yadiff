@@ -71,7 +71,9 @@ h1 span { color: #a1a1aa; font-family: ui-monospace, SFMono-Regular, Menlo, mono
 }
 .button:hover,
 .button.active { background: rgba(255, 255, 255, 0.14); color: white; }
-.copyStatus { color: #a1a1aa; font-size: 12px; }
+.button.status-copied { background: rgba(74, 222, 128, 0.16); color: #86efac; }
+.button.status-empty { background: rgba(250, 204, 21, 0.14); color: #fde68a; }
+.button.status-error { background: rgba(248, 113, 113, 0.16); color: #fca5a5; }
 
 .sidebar {
   grid-area: sidebar;
