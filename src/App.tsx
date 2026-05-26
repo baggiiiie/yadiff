@@ -165,7 +165,7 @@ export function App() {
     }
 
     const text = reviews
-      .map((review) => `${review.path}:${review.lineNumber}, ${review.body}`)
+      .map((review, index) => `${index + 1}. ${review.path}:${review.lineNumber} (${formatReviewSide(review.side)})\n   ${review.body}`)
       .join('\n');
     try {
       await navigator.clipboard.writeText(text);
@@ -366,7 +366,7 @@ export function App() {
               }
               return (
                 <div className="reviewAnnotation">
-                  <div className="reviewAnnotationMeta">{review.path}:{review.lineNumber}</div>
+                  <div className="reviewAnnotationMeta">{review.path}:{review.lineNumber} ({formatReviewSide(review.side)})</div>
                   <div className="reviewAnnotationBody">{review.body}</div>
                   <button
                     type="button"
@@ -495,6 +495,10 @@ function normalizeReviewSide(side: AnnotationSide | undefined): AnnotationSide {
   return side ?? 'additions';
 }
 
+function formatReviewSide(side: AnnotationSide): 'old' | 'new' {
+  return side === 'deletions' ? 'old' : 'new';
+}
+
 function formatCopyStatus(status: 'copied' | 'empty' | 'error') {
   if (status === 'copied') return 'Copied';
   if (status === 'empty') return 'No reviews';
@@ -529,7 +533,7 @@ function DraftReviewBox({
 }) {
   return (
     <div className="reviewAnnotation reviewDraft">
-      <div className="reviewAnnotationMeta">{draft.path}:{draft.lineNumber}</div>
+      <div className="reviewAnnotationMeta">{draft.path}:{draft.lineNumber} ({formatReviewSide(draft.side)})</div>
       <textarea
         autoFocus
         className="reviewTextarea"
