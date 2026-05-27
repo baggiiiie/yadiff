@@ -11,7 +11,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
 
 function printUsage() {
-  console.log(`Usage: diffshub-local <git-ref-or-range> [options]
+  console.log(`Usage: diffshub-local <git-ref-or-range-or-jj-revset> [options]
        diffshub-local --working [options]
        diffshub-local --staged [options]
        diffshub-local --dirty [options]
@@ -20,15 +20,20 @@ Examples:
   diffshub-local abc123
   diffshub-local main..feature
   diffshub-local main...HEAD --repo ../my-repo
+  diffshub-local @ --repo ../my-jj-repo
+  diffshub-local 'mine() & mutable()' --vcs jj
   diffshub-local --working
   diffshub-local --staged
   diffshub-local --dirty
 
 Options:
-  --working          Show unstaged tracked-file changes (git diff)
-  --staged           Show staged changes (git diff --cached)
-  --dirty            Show staged + unstaged tracked-file changes (git diff HEAD)
-  --repo <path>      Git repository to inspect (default: current directory)
+  --working          Show unstaged tracked-file changes (git diff), or jj @ if no git repo exists
+  --staged           Show staged changes (git diff --cached; git only)
+  --dirty            Show staged + unstaged tracked-file changes (git diff HEAD), or jj @ if no git repo exists
+  --repo <path>      Repository/workspace path, including subdirectories (default: current directory)
+  --vcs <auto|git|jj> Select backend (default: auto)
+  --git              Shortcut for --vcs git
+  --jj               Shortcut for --vcs jj
   --port <number>   Port to listen on (default: 5177)
   --host <host>     Host to bind (default: 127.0.0.1)
   --no-open         Do not open the browser automatically
@@ -44,6 +49,7 @@ function parseArgs(argv) {
     port: 5177,
     host: '127.0.0.1',
     open: true,
+    vcs: 'auto',
   };
 
   for (let index = 0; index < argv.length; index++) {
@@ -61,6 +67,12 @@ function parseArgs(argv) {
       args.port = Number(requireValue(argv, ++index, '--port'));
     } else if (arg === '--host') {
       args.host = requireValue(argv, ++index, '--host');
+    } else if (arg === '--vcs') {
+      args.vcs = requireChoice(requireValue(argv, ++index, '--vcs'), '--vcs', ['auto', 'git', 'jj']);
+    } else if (arg === '--git') {
+      args.vcs = 'git';
+    } else if (arg === '--jj') {
+      args.vcs = 'jj';
     } else if (arg === '--no-open') {
       args.open = false;
     } else if (arg?.startsWith('--')) {
@@ -76,7 +88,7 @@ function parseArgs(argv) {
     throw new Error('--port must be a positive number');
   }
   if (args.ref != null && args.mode != null) {
-    throw new Error('Pass either a git ref/range or one of --working, --staged, --dirty, not both.');
+    throw new Error('Pass either a ref/range/revset or one of --working, --staged, --dirty, not both.');
   }
 
   return args;
@@ -90,20 +102,45 @@ function requireValue(argv, index, flag) {
   return value;
 }
 
+function requireChoice(value, flag, choices) {
+  if (!choices.includes(value)) {
+    throw new Error(`${flag} must be one of: ${choices.join(', ')}`);
+  }
+  return value;
+}
+
 function runGitSync(repo, args) {
-  const result = spawnSync('git', ['-C', repo, ...args], {
+  return runCommandSync('git', args, repo);
+}
+
+function runGit(repo, args) {
+  return runCommand('git', args, repo);
+}
+
+function runJjSync(repo, args) {
+  return runCommandSync('jj', ['--no-pager', '--color', 'never', ...args], repo);
+}
+
+function runJj(repo, args) {
+  return runCommand('jj', ['--no-pager', '--color', 'never', ...args], repo);
+}
+
+function runCommandSync(command, args, cwd) {
+  const result = spawnSync(command, args, {
+    cwd,
     encoding: 'utf8',
     maxBuffer: 10 * 1024 * 1024,
   });
   if (result.status !== 0) {
-    throw new Error((result.stderr || result.stdout || `git ${args.join(' ')} failed`).trim());
+    throw new Error((result.stderr || result.stdout || `${command} ${args.join(' ')} failed`).trim());
   }
   return result.stdout.trim();
 }
 
-function runGit(repo, args) {
+function runCommand(command, args, cwd) {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn('git', ['-C', repo, ...args], {
+    const child = spawn(command, args, {
+      cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     const stdout = [];
@@ -116,12 +153,96 @@ function runGit(repo, args) {
         resolvePromise(Buffer.concat(stdout).toString('utf8'));
         return;
       }
-      reject(new Error(Buffer.concat(stderr).toString('utf8').trim() || `git ${args.join(' ')} failed (${code})`));
+      reject(new Error(Buffer.concat(stderr).toString('utf8').trim() || `${command} ${args.join(' ')} failed (${code})`));
     });
   });
 }
 
-function getPatchArgs(args) {
+function trySync(fn) {
+  try {
+    return fn();
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveRepositories(repo) {
+  const gitRoot = trySync(() => runGitSync(repo, ['rev-parse', '--show-toplevel']));
+  const jjRoot = trySync(() => runJjSync(repo, ['root']));
+  return { gitRoot, jjRoot };
+}
+
+function selectBackend(args, repositories) {
+  const { gitRoot, jjRoot } = repositories;
+  if (args.vcs === 'git') {
+    if (gitRoot == null) {
+      throw new Error(`No git repository found at or above ${args.repo}`);
+    }
+    return { kind: 'git', repoRoot: gitRoot };
+  }
+  if (args.vcs === 'jj') {
+    if (jjRoot == null) {
+      throw new Error(`No jj repository found at or above ${args.repo}`);
+    }
+    if (args.mode === 'staged') {
+      throw new Error('--staged is only supported for git repositories.');
+    }
+    return { kind: 'jj', repoRoot: jjRoot };
+  }
+  if (args.mode != null) {
+    if (gitRoot != null) {
+      return { kind: 'git', repoRoot: gitRoot };
+    }
+    if (jjRoot != null && args.mode !== 'staged') {
+      return { kind: 'jj', repoRoot: jjRoot };
+    }
+    throw new Error(`No git repository found at or above ${args.repo}`);
+  }
+  if (jjRoot != null && isLikelyJjRevset(args.ref)) {
+    return { kind: 'jj', repoRoot: jjRoot };
+  }
+  if (gitRoot != null && isLikelyGitRange(args.ref)) {
+    return { kind: 'git', repoRoot: gitRoot };
+  }
+  if (gitRoot != null && isGitRevision(gitRoot, args.ref)) {
+    return { kind: 'git', repoRoot: gitRoot };
+  }
+  if (jjRoot != null) {
+    return { kind: 'jj', repoRoot: jjRoot };
+  }
+  if (gitRoot != null) {
+    return { kind: 'git', repoRoot: gitRoot };
+  }
+  throw new Error(`No git or jj repository found at or above ${args.repo}`);
+}
+
+function isGitRevision(repo, ref) {
+  if (ref == null) {
+    return false;
+  }
+  const result = spawnSync('git', ['rev-parse', '--verify', `${ref}^{commit}`], {
+    cwd: repo,
+    encoding: 'utf8',
+  });
+  return result.status === 0;
+}
+
+function isLikelyGitRange(ref) {
+  return ref?.includes('..') === true;
+}
+
+function isLikelyJjRevset(ref) {
+  if (ref == null) {
+    return false;
+  }
+  return ref === '@'
+    || ref.startsWith('@')
+    || ref.includes('::')
+    || /[|&~]/.test(ref)
+    || /\b(?:all|author|bookmarks|children|connected|conflicts|description|destination|empty|file|git_head|heads|immutable|latest|mine|mutable|none|parents|present|remote_bookmarks|root|tags|trunk|visible|working_copies)\s*\(/.test(ref);
+}
+
+function getGitPatchArgs(args) {
   const common = ['--find-renames', '--find-copies', '--no-ext-diff', '--no-color'];
   if (args.mode === 'working') {
     return ['diff', ...common, '--patch', '--'];
@@ -138,6 +259,13 @@ function getPatchArgs(args) {
   return ['show', ...common, '--format=fuller', '--patch', args.ref, '--'];
 }
 
+function getJjPatchArgs(args) {
+  if (args.mode === 'staged') {
+    throw new Error('--staged is only supported for git repositories.');
+  }
+  return ['diff', '--git', '-r', args.ref ?? '@'];
+}
+
 function getDisplayRef(args) {
   if (args.mode === 'working') {
     return '--working';
@@ -149,6 +277,20 @@ function getDisplayRef(args) {
     return '--dirty';
   }
   return args.ref;
+}
+
+function getPatch(backend, args) {
+  if (backend.kind === 'git') {
+    return runGit(backend.repoRoot, getGitPatchArgs(args));
+  }
+  return runJj(backend.repoRoot, getJjPatchArgs(args));
+}
+
+function getHead(backend) {
+  if (backend.kind === 'git') {
+    return trySync(() => runGitSync(backend.repoRoot, ['rev-parse', '--short', 'HEAD'])) ?? 'unknown';
+  }
+  return trySync(() => runJjSync(backend.repoRoot, ['log', '-r', '@', '--no-graph', '-T', 'commit_id.short()'])) ?? 'unknown';
 }
 
 async function main() {
@@ -164,18 +306,19 @@ async function main() {
   }
 
   const displayRef = getDisplayRef(args);
-  const repoRoot = runGitSync(args.repo, ['rev-parse', '--show-toplevel']);
-  const repositoryName = repoRoot.split('/').filter(Boolean).at(-1) ?? repoRoot;
+  const backend = selectBackend(args, resolveRepositories(args.repo));
+  const repositoryName = backend.repoRoot.split('/').filter(Boolean).at(-1) ?? backend.repoRoot;
 
   const app = express();
   app.get('/api/diff', async (_req, res) => {
     try {
-      const patch = await runGit(repoRoot, getPatchArgs(args));
-      const head = runGitSync(repoRoot, ['rev-parse', '--short', 'HEAD']);
+      const patch = await getPatch(backend, args);
+      const head = getHead(backend);
       res.json({
         ref: displayRef,
         repositoryName,
-        repoRoot,
+        repoRoot: backend.repoRoot,
+        vcs: backend.kind,
         head,
         patch,
         patchBytes: Buffer.byteLength(patch),
@@ -187,7 +330,7 @@ async function main() {
 
   app.get('/api/raw.diff', async (_req, res) => {
     try {
-      const patch = await runGit(repoRoot, getPatchArgs(args));
+      const patch = await getPatch(backend, args);
       res.type('text/plain').send(patch);
     } catch (error) {
       res.status(500).type('text/plain').send(error instanceof Error ? error.message : String(error));
@@ -205,7 +348,8 @@ async function main() {
   await new Promise((resolvePromise) => server.listen(args.port, args.host, resolvePromise));
   const url = `http://${args.host}:${args.port}/`;
   console.log(`Local DiffsHub: ${url}`);
-  console.log(`Repo: ${repoRoot}`);
+  console.log(`Repo: ${backend.repoRoot}`);
+  console.log(`VCS:  ${backend.kind}`);
   console.log(`Ref:  ${displayRef}`);
 
   if (args.open) {

@@ -15,6 +15,7 @@ interface DiffResponse {
   head: string;
   patch: string;
   patchBytes: number;
+  vcs?: 'git' | 'jj';
   error?: string;
 }
 
@@ -227,7 +228,7 @@ export function App() {
   }, [parsed.items, pendingTreeScrollItemId]);
 
   if (loadState === 'loading') {
-    return <Shell message="Fetching diff from local git…" />;
+    return <Shell message="Fetching diff from local repository…" />;
   }
 
   if (loadState === 'error') {
