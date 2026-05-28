@@ -81,17 +81,70 @@ h1 span { color: #a1a1aa; font-family: ui-monospace, SFMono-Regular, Menlo, mono
   min-height: 0;
   padding: 10px 0 10px 10px;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .fileTree {
-  --trees-bg-override: transparent;
+  --trees-bg-override: #09090b;
   --trees-fg-override: #d4d4d8;
   --trees-muted-fg-override: #a1a1aa;
   --trees-border-color-override: rgba(255, 255, 255, 0.08);
   --trees-selected-bg-override: rgba(96, 165, 250, 0.18);
+  --trees-sticky-bg-override: #09090b;
   border-radius: 12px;
   overflow: hidden;
+  flex: 1;
+  min-height: 0;
 }
 .treeHeader { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; color: #d4d4d8; font-size: 12px; }
+
+.commitList {
+  flex: none;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 8px;
+}
+.commitListHeader {
+  padding: 4px 10px 6px;
+  color: #a1a1aa;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.commitItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 10px;
+  border: 0;
+  background: transparent;
+  color: #d4d4d8;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 6px;
+}
+.commitItem:hover { background: rgba(255, 255, 255, 0.06); }
+.commitItem.active { background: rgba(96, 165, 250, 0.18); color: white; }
+.commitItemShortId {
+  flex: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #93c5fd;
+  font-size: 11px;
+}
+.commitItemMessage {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.commitItemLabel {
+  font-weight: 500;
+}
 
 .viewer { grid-area: viewer; min-height: 0; min-width: 0; padding: 0; }
 .codeView {

@@ -16,7 +16,14 @@ interface DiffResponse {
   patch: string;
   patchBytes: number;
   vcs?: 'git' | 'jj';
+  commits?: CommitInfo[];
   error?: string;
+}
+
+interface CommitInfo {
+  id: string;
+  shortId: string;
+  message: string;
 }
 
 interface FileStats {
@@ -93,6 +100,8 @@ export function App() {
   const [reviews, setReviews] = useState<LineReview[]>([]);
   const [draftReview, setDraftReview] = useState<DraftReview | null>(null);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'empty' | 'error'>('idle');
+  const [activeCommitId, setActiveCommitId] = useState<string | null>(null);
+  const [commitPatch, setCommitPatch] = useState<string | null>(null);
   const viewerRef = useRef<CodeViewHandle<ReviewAnnotation>>(null);
   const onTreeSelectionRef = useRef<(paths: readonly string[]) => void>(() => undefined);
   const { model: treeModel } = useFileTree({
@@ -139,15 +148,52 @@ export function App() {
     setReviews([]);
     setDraftReview(null);
     setCopyStatus('idle');
+    setActiveCommitId(null);
+    setCommitPatch(null);
   }, [response?.target]);
+
+  useEffect(() => {
+    if (activeCommitId == null) {
+      setCommitPatch(null);
+      return;
+    }
+    let cancelled = false;
+    const commitId = activeCommitId;
+    async function fetchCommitPatch() {
+      try {
+        const result = await fetch(`/api/diff/${encodeURIComponent(commitId)}`, { cache: 'no-store' });
+        const data = await result.json();
+        if (!result.ok) {
+          throw new Error(data.error ?? `Request failed (${result.status})`);
+        }
+        if (!cancelled) {
+          setCommitPatch(data.patch);
+        }
+      } catch {
+        if (!cancelled) {
+          setCommitPatch(null);
+        }
+      }
+    }
+    void fetchCommitPatch();
+    return () => { cancelled = true; };
+  }, [activeCommitId]);
+
+  useEffect(() => {
+    setCollapsedIds(new Set());
+    setReviews([]);
+    setDraftReview(null);
+  }, [activeCommitId]);
 
   const parsed = useMemo<ParsedModel>(() => {
     if (response == null) {
       return INITIAL_PARSED_MODEL;
     }
-    const patches = parsePatchFiles(response.patch, encodeURIComponent(response.target));
+    const activePatch = activeCommitId != null && commitPatch != null ? commitPatch : response.patch;
+    const patchKey = activeCommitId ?? response.target;
+    const patches = parsePatchFiles(activePatch, encodeURIComponent(patchKey));
     return buildParsedModel(patches, collapsedIds, reviews, draftReview);
-  }, [collapsedIds, draftReview, response, reviews]);
+  }, [activeCommitId, collapsedIds, commitPatch, draftReview, response, reviews]);
 
   const allCollapsed = parsed.items.length > 0 && parsed.items.every((item) => collapsedIds.has(item.id));
   const toggleAllCollapsed = () => {
@@ -186,7 +232,7 @@ export function App() {
   useEffect(() => {
     treeModel.resetPaths(parsed.paths);
     treeModel.setGitStatus(parsed.gitStatus);
-  }, [response?.target, treeModel]);
+  }, [parsed.paths, parsed.gitStatus, treeModel]);
 
   useEffect(() => {
     onTreeSelectionRef.current = (paths) => {
@@ -285,6 +331,13 @@ export function App() {
       </header>
 
       <aside className="sidebar">
+        {response?.commits != null && response.commits.length > 0 && (
+          <CommitList
+            commits={response.commits}
+            activeCommitId={activeCommitId}
+            onSelect={setActiveCommitId}
+          />
+        )}
         <FileTree
           model={treeModel}
           header={<TreeHeader stats={parsed.stats} />}
@@ -299,7 +352,7 @@ export function App() {
         ) : (
           <CodeView
             ref={viewerRef}
-            key={response?.target}
+            key={`${response?.target}:${activeCommitId ?? 'combined'}`}
             items={parsed.items}
             disableWorkerPool
             className="codeView"
@@ -612,6 +665,41 @@ function FileMeta({ file }: { file: FileDiffMetadata }) {
       <span className="plus">+{additions}</span>
       <span className="minus">−{deletions}</span>
     </span>
+  );
+}
+
+function CommitList({
+  commits,
+  activeCommitId,
+  onSelect,
+}: {
+  commits: CommitInfo[];
+  activeCommitId: string | null;
+  onSelect: (id: string | null) => void;
+}) {
+  return (
+    <div className="commitList">
+      <div className="commitListHeader">Commits</div>
+      <button
+        type="button"
+        className={activeCommitId == null ? 'commitItem active' : 'commitItem'}
+        onClick={() => onSelect(null)}
+      >
+        <span className="commitItemLabel">All changes (combined)</span>
+      </button>
+      {commits.map((commit) => (
+        <button
+          key={commit.id}
+          type="button"
+          className={activeCommitId === commit.id ? 'commitItem active' : 'commitItem'}
+          onClick={() => onSelect(commit.id)}
+          title={commit.id}
+        >
+          <span className="commitItemShortId">{commit.shortId}</span>
+          <span className="commitItemMessage">{commit.message}</span>
+        </button>
+      ))}
+    </div>
   );
 }
 
