@@ -216,7 +216,12 @@ async function main() {
   if (args.open) {
     const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
     const openerArgs = process.platform === 'win32' ? ['/c', 'start', url] : [url];
-    spawn(opener, openerArgs, { detached: true, stdio: 'ignore' }).unref();
+    const child = spawn(opener, openerArgs, { detached: true, stdio: 'ignore' });
+    // Swallow ENOENT etc. so a missing opener (e.g. xdg-open on a minimal
+    // Linux/WSL system) does not crash the server. The user can still visit
+    // the URL printed above or pass --no-open.
+    child.on('error', () => {});
+    child.unref();
   }
 }
 

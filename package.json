@@ -4,8 +4,15 @@
   "type": "module",
   "description": "Yet another diff viewer — browser UI for local git/jj diffs and public GitHub pull requests.",
   "license": "MIT",
-  "author": "",
-  "repository": "",
+  "author": "baggiiiie",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/baggiiiie/yadiff.git"
+  },
+  "bugs": {
+    "url": "https://github.com/baggiiiie/yadiff/issues"
+  },
+  "homepage": "https://github.com/baggiiiie/yadiff#readme",
   "keywords": ["diff", "git", "jj", "github", "pull-request", "viewer", "cli"],
   "bin": {
     "yadiff": "./bin/yadiff.js"
@@ -17,8 +24,7 @@
     "index.html",
     "vite.config.ts",
     "tsconfig.json",
-    "README.md",
-    "THIRD_PARTY_NOTICES.md"
+    "README.md"
   ],
   "engines": {
     "node": ">=18.0.0"
