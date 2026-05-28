@@ -1,23 +1,38 @@
 import type { AnnotationSide } from '@pierre/diffs';
-import { CodeView, type CodeViewHandle } from '@pierre/diffs/react';
+import { CodeView, type CodeViewHandle, WorkerPoolContextProvider } from '@pierre/diffs/react';
 import { FileTree, useFileTree } from '@pierre/trees/react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 
-import { createDiffProjection, type ProjectedFile, type ProjectedFileIdentity } from './diffProjection';
+import {
+  createDiffProjection,
+  parseDiffPatch,
+  type ProjectedFile,
+  type ProjectedFileIdentity,
+} from './diffProjection';
 
 type DiffStyle = 'split' | 'unified';
 type Overflow = 'scroll' | 'wrap';
 type LoadState = 'loading' | 'ready' | 'error';
+type Source = 'git' | 'jj' | 'github';
 
 interface DiffResponse {
+  status: 'ready';
   target: string;
   repositoryName: string;
   repoRoot: string;
   head: string;
-  patch: string;
-  patchBytes: number;
-  vcs?: 'git' | 'jj';
+  patchBytes?: number;
+  patchUrl: string;
+  source: Source;
   commits?: CommitInfo[];
+  error?: string;
+}
+
+interface DiffStatusResponse {
+  status: 'fetching' | 'ready' | 'error';
+  source: Source;
+  bytesDownloaded?: number;
+  patchBytes?: number;
   error?: string;
 }
 
@@ -66,10 +81,19 @@ const REVIEW_UNSAFE_CSS = `
   }
 `;
 
+const DIFF_WORKER_POOL_OPTIONS = {
+  workerFactory: () => new Worker(new URL('@pierre/diffs/worker/worker.js', import.meta.url), { type: 'module' }),
+};
+const DIFF_HIGHLIGHTER_OPTIONS = {};
+
 export function App() {
   const [loadState, setLoadState] = useState<LoadState>('loading');
+  const [loadingMessage, setLoadingMessage] = useState('Fetching diff from local repository…');
+  const [loadingDetails, setLoadingDetails] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<DiffResponse | null>(null);
+  const [patch, setPatch] = useState('');
+  const [loadedPatchBytes, setLoadedPatchBytes] = useState<number | undefined>(undefined);
   const [diffStyle, setDiffStyle] = useState<DiffStyle>(() =>
     window.matchMedia('(max-width: 800px)').matches ? 'unified' : 'split'
   );
@@ -100,15 +124,30 @@ export function App() {
     let cancelled = false;
     async function load() {
       setLoadState('loading');
+      setLoadingMessage('Fetching diff from local repository…');
+      setLoadingDetails(null);
       setError(null);
       try {
-        const result = await fetch('/api/diff', { cache: 'no-store' });
-        const data = (await result.json()) as DiffResponse;
-        if (!result.ok) {
-          throw new Error(data.error ?? `Request failed (${result.status})`);
-        }
+        const metadata = await fetchDiffMetadata((status) => {
+          if (cancelled) return;
+          setLoadingMessage(status.source === 'github'
+            ? 'Fetching GitHub pull request diff…'
+            : 'Fetching diff from local repository…');
+          setLoadingDetails(formatStatusDetails(status));
+        });
+        if (cancelled) return;
+
+        setResponse(metadata);
+        setLoadingMessage('Loading diff into browser…');
+        setLoadingDetails(metadata.patchBytes != null ? `Diff size: ${formatBytes(metadata.patchBytes)}` : null);
+        const rawPatch = await fetchPatchText(metadata.patchUrl, (downloaded, total) => {
+          if (cancelled) return;
+          const sizeLabel = total != null ? `${formatBytes(downloaded)} / ${formatBytes(total)}` : formatBytes(downloaded);
+          setLoadingDetails(`Downloaded ${sizeLabel}`);
+        });
         if (!cancelled) {
-          setResponse(data);
+          setPatch(rawPatch);
+          setLoadedPatchBytes(metadata.patchBytes ?? byteLength(rawPatch));
           setLoadState('ready');
         }
       } catch (loadError) {
@@ -166,21 +205,15 @@ export function App() {
     setDraftReview(null);
   }, [activeCommitId]);
 
-  const parsed = useMemo(() => {
-    const activePatch = response == null
-      ? ''
-      : activeCommitId != null && commitPatch != null
-        ? commitPatch
-        : response.patch;
-    const diffKey = response == null ? 'empty' : activeCommitId ?? response.target;
-    return createDiffProjection<ReviewAnnotation>({
-      patch: activePatch,
-      diffKey,
-      collapsedFileIds: collapsedIds,
-      reviews,
-      draftReview,
-    });
-  }, [activeCommitId, collapsedIds, commitPatch, draftReview, response, reviews]);
+  const activePatch = activeCommitId != null ? (commitPatch ?? '') : patch;
+  const diffKey = response == null ? 'empty' : activeCommitId ?? response.target;
+  const parsedPatches = useMemo(() => parseDiffPatch(activePatch, diffKey), [activePatch, diffKey]);
+  const parsed = useMemo(() => createDiffProjection<ReviewAnnotation>({
+    patches: parsedPatches,
+    collapsedFileIds: collapsedIds,
+    reviews,
+    draftReview,
+  }), [collapsedIds, draftReview, parsedPatches, reviews]);
 
   const allCollapsed = parsed.files.length > 0 && parsed.files.every((file) => collapsedIds.has(file.id));
   const toggleAllCollapsed = () => {
@@ -198,9 +231,11 @@ export function App() {
       return;
     }
 
-    const targetLabel = response?.vcs === 'jj'
-      ? `jj revision "${response.target}"`
-      : `Git commit "${response?.target ?? 'unknown'}"`;
+    const targetLabel = response?.source === 'github'
+      ? `GitHub pull request "${response.target}"`
+      : response?.source === 'jj'
+        ? `jj revision "${response.target}"`
+        : `Git commit "${response?.target ?? 'unknown'}"`;
     const header = `Below is my review for ${targetLabel}`;
     const body = reviews
       .map((review, index) => `${index + 1}. ${review.path}:${review.lineNumber} (${formatReviewSide(review.side)})\n   ${review.body}`)
@@ -215,6 +250,8 @@ export function App() {
   };
 
   const reviewButtonLabel = copyStatus === 'idle' ? `Reviews (${reviews.length})` : formatCopyStatus(copyStatus);
+  const effectivePatchBytes = loadedPatchBytes ?? response?.patchBytes;
+  const largeDiffLabel = getLargeDiffLabel(response?.source, effectivePatchBytes, parsed.stats.files);
 
   useEffect(() => {
     treeModel.resetPaths(parsed.paths);
@@ -269,7 +306,7 @@ export function App() {
   }, [parsed, pendingTreeScrollFileId]);
 
   if (loadState === 'loading') {
-    return <Shell message="Fetching diff from local repository…" />;
+    return <Shell message={loadingMessage} details={loadingDetails ?? undefined} />;
   }
 
   if (loadState === 'error') {
@@ -277,180 +314,284 @@ export function App() {
   }
 
   return (
-    <div className="app">
-      <header className="toolbar">
-        <div className="titleBlock">
-          <div className="eyebrow">yadiff</div>
-          <h1>{response?.repositoryName} <span>{response?.target}</span></h1>
-        </div>
-        <a
-          className="poweredBy"
-          href="https://github.com/pierrecomputer/pierre/tree/main/packages"
-          target="_blank"
-          rel="noreferrer"
-          title="Powered by @pierre/diffs and @pierre/trees"
-        >
-          Powered by Diffs and Trees
-        </a>
-        <div className="controls">
-          <PillButton active={diffStyle === 'unified'} onClick={() => setDiffStyle(diffStyle === 'unified' ? 'split' : 'unified')}>
-            Unified
-          </PillButton>
-          <PillButton active={overflow === 'wrap'} onClick={() => setOverflow(overflow === 'wrap' ? 'scroll' : 'wrap')}>
-            Wrap
-          </PillButton>
-          <PillButton active={lineNumbers} onClick={() => setLineNumbers((value) => !value)}>
-            Lines
-          </PillButton>
-          <PillButton active={showBackgrounds} onClick={() => setShowBackgrounds((value) => !value)}>
-            Background
-          </PillButton>
-          <PillButton active={allCollapsed} onClick={toggleAllCollapsed} title={allCollapsed ? 'Expand all files' : 'Collapse all files'}>
-            Collapse
-          </PillButton>
-          <button className={copyStatus === 'idle' ? 'button' : `button status-${copyStatus}`} onClick={copyReviews} title="Copy reviews">
-            {reviewButtonLabel}
-          </button>
-          <a className="button" href="/api/raw.diff" target="_blank" rel="noreferrer">Raw</a>
-        </div>
-      </header>
+    <WorkerPoolContextProvider poolOptions={DIFF_WORKER_POOL_OPTIONS} highlighterOptions={DIFF_HIGHLIGHTER_OPTIONS}>
+      <div className="app">
+        <header className="toolbar">
+          <div className="titleBlock">
+            <div className="eyebrow">yadiff · {formatSource(response?.source)}</div>
+            <h1>{response?.repositoryName} <span>{response?.target}</span></h1>
+            {largeDiffLabel != null ? <div className="largeDiffBadge">{largeDiffLabel}</div> : null}
+          </div>
+          <a
+            className="poweredBy"
+            href="https://github.com/pierrecomputer/pierre/tree/main/packages"
+            target="_blank"
+            rel="noreferrer"
+            title="Powered by @pierre/diffs and @pierre/trees"
+          >
+            Powered by Diffs and Trees
+          </a>
+          <div className="controls">
+            <PillButton active={diffStyle === 'unified'} onClick={() => setDiffStyle(diffStyle === 'unified' ? 'split' : 'unified')}>
+              Unified
+            </PillButton>
+            <PillButton active={overflow === 'wrap'} onClick={() => setOverflow(overflow === 'wrap' ? 'scroll' : 'wrap')}>
+              Wrap
+            </PillButton>
+            <PillButton active={lineNumbers} onClick={() => setLineNumbers((value) => !value)}>
+              Lines
+            </PillButton>
+            <PillButton active={showBackgrounds} onClick={() => setShowBackgrounds((value) => !value)}>
+              Background
+            </PillButton>
+            <PillButton active={allCollapsed} onClick={toggleAllCollapsed} title={allCollapsed ? 'Expand all files' : 'Collapse all files'}>
+              Collapse
+            </PillButton>
+            <button className={copyStatus === 'idle' ? 'button' : `button status-${copyStatus}`} onClick={copyReviews} title="Copy reviews">
+              {reviewButtonLabel}
+            </button>
+            <a className="button" href="/api/raw.diff" target="_blank" rel="noreferrer">Raw</a>
+          </div>
+        </header>
 
-      <aside className="sidebar">
-        {response?.commits != null && response.commits.length > 0 && (
-          <CommitList
-            commits={response.commits}
-            activeCommitId={activeCommitId}
-            onSelect={setActiveCommitId}
+        <aside className="sidebar">
+          {response?.commits != null && response.commits.length > 0 && (
+            <CommitList
+              commits={response.commits}
+              activeCommitId={activeCommitId}
+              onSelect={setActiveCommitId}
+            />
+          )}
+          <FileTree
+            model={treeModel}
+            header={<TreeHeader stats={parsed.stats} />}
+            className="fileTree"
+            style={{ height: '100%' }}
           />
-        )}
-        <FileTree
-          model={treeModel}
-          header={<TreeHeader stats={parsed.stats} />}
-          className="fileTree"
-          style={{ height: '100%' }}
-        />
-      </aside>
+        </aside>
 
-      <main className="viewer">
-        {parsed.codeViewItems.length === 0 ? (
-          <div className="empty">No patch content found for this target.</div>
-        ) : (
-          <CodeView
-            ref={viewerRef}
-            key={`${response?.target}:${activeCommitId ?? 'combined'}`}
-            items={parsed.codeViewItems}
-            disableWorkerPool
-            className="codeView"
-            options={{
-              diffStyle,
-              overflow,
-              disableLineNumbers: !lineNumbers,
-              disableBackground: !showBackgrounds,
-              diffIndicators: 'bars',
-              hunkSeparators: 'line-info',
-              collapsedContextThreshold: 2,
-              expansionLineCount: 50,
-              lineHoverHighlight: 'both',
-              enableGutterUtility: true,
-              enableLineSelection: false,
-              stickyHeaders: true,
-              unsafeCSS: REVIEW_UNSAFE_CSS,
-              layout: { paddingTop: 12, paddingBottom: 32, gap: 12 },
-              onGutterUtilityClick: (range, context) => {
-                if (context.item.type !== 'diff') {
-                  return;
+        <main className="viewer">
+          {parsed.codeViewItems.length === 0 ? (
+            <div className="empty">No patch content found for this target.</div>
+          ) : (
+            <CodeView
+              ref={viewerRef}
+              key={`${response?.target}:${activeCommitId ?? 'combined'}`}
+              items={parsed.codeViewItems}
+              className="codeView"
+              options={{
+                diffStyle,
+                overflow,
+                disableLineNumbers: !lineNumbers,
+                disableBackground: !showBackgrounds,
+                diffIndicators: 'bars',
+                hunkSeparators: 'line-info',
+                collapsedContextThreshold: 2,
+                expansionLineCount: 50,
+                lineHoverHighlight: 'both',
+                enableGutterUtility: true,
+                enableLineSelection: false,
+                stickyHeaders: true,
+                unsafeCSS: REVIEW_UNSAFE_CSS,
+                layout: { paddingTop: 12, paddingBottom: 32, gap: 12 },
+                onGutterUtilityClick: (range, context) => {
+                  if (context.item.type !== 'diff') {
+                    return;
+                  }
+                  const file = parsed.getFileForCodeViewItem(context.item);
+                  if (file == null) {
+                    return;
+                  }
+                  const side = normalizeReviewSide(range.endSide ?? range.side);
+                  const lineNumber = range.end;
+                  setDraftReview({
+                    kind: 'draft',
+                    id: `draft:${file.id}:${side}:${lineNumber}`,
+                    fileId: file.id,
+                    path: file.path,
+                    lineNumber,
+                    side,
+                    body: '',
+                  });
+                  setCopyStatus('idle');
+                },
+              }}
+              renderAnnotation={(annotation) => {
+                const review = annotation.metadata;
+                if (review == null) {
+                  return null;
                 }
-                const file = parsed.getFileForCodeViewItem(context.item);
-                if (file == null) {
-                  return;
+                if (review.kind === 'draft') {
+                  return (
+                    <DraftReviewBox
+                      draft={review}
+                      onChange={(body) => setDraftReview((current) => current?.id === review.id ? { ...current, body } : current)}
+                      onCancel={() => setDraftReview((current) => current?.id === review.id ? null : current)}
+                      onSave={() => {
+                        const body = review.body.trim();
+                        if (body.length === 0) {
+                          return;
+                        }
+                        setReviews((current) => [
+                          ...current,
+                          {
+                            kind: 'saved',
+                            id: `${review.fileId}:${review.side}:${review.lineNumber}:${Date.now()}`,
+                            fileId: review.fileId,
+                            path: review.path,
+                            lineNumber: review.lineNumber,
+                            side: review.side,
+                            body,
+                          },
+                        ]);
+                        setDraftReview(null);
+                      }}
+                    />
+                  );
                 }
-                const side = normalizeReviewSide(range.endSide ?? range.side);
-                const lineNumber = range.end;
-                setDraftReview({
-                  kind: 'draft',
-                  id: `draft:${file.id}:${side}:${lineNumber}`,
-                  fileId: file.id,
-                  path: file.path,
-                  lineNumber,
-                  side,
-                  body: '',
-                });
-                setCopyStatus('idle');
-              },
-            }}
-            renderAnnotation={(annotation) => {
-              const review = annotation.metadata;
-              if (review == null) {
-                return null;
-              }
-              if (review.kind === 'draft') {
                 return (
-                  <DraftReviewBox
-                    draft={review}
-                    onChange={(body) => setDraftReview((current) => current?.id === review.id ? { ...current, body } : current)}
-                    onCancel={() => setDraftReview((current) => current?.id === review.id ? null : current)}
-                    onSave={() => {
-                      const body = review.body.trim();
-                      if (body.length === 0) {
-                        return;
-                      }
-                      setReviews((current) => [
-                        ...current,
-                        {
-                          kind: 'saved',
-                          id: `${review.fileId}:${review.side}:${review.lineNumber}:${Date.now()}`,
-                          fileId: review.fileId,
-                          path: review.path,
-                          lineNumber: review.lineNumber,
-                          side: review.side,
-                          body,
-                        },
-                      ]);
-                      setDraftReview(null);
+                  <div className="reviewAnnotation">
+                    <div className="reviewAnnotationMeta">{review.path}:{review.lineNumber} ({formatReviewSide(review.side)})</div>
+                    <div className="reviewAnnotationBody">{review.body}</div>
+                    <button
+                      type="button"
+                      className="reviewAnnotationDelete"
+                      onClick={() => setReviews((current) => current.filter((item) => item.id !== review.id))}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                );
+              }}
+              renderCustomHeader={(item) => {
+                if (item.type !== 'diff') return null;
+                const file = parsed.getFileForCodeViewItem(item);
+                if (file == null) return null;
+                return (
+                  <DiffHeader
+                    file={file}
+                    onToggle={() => {
+                      setCollapsedIds((current) => {
+                        const next = new Set(current);
+                        if (next.has(file.id)) {
+                          next.delete(file.id);
+                        } else {
+                          next.add(file.id);
+                        }
+                        return next;
+                      });
                     }}
                   />
                 );
-              }
-              return (
-                <div className="reviewAnnotation">
-                  <div className="reviewAnnotationMeta">{review.path}:{review.lineNumber} ({formatReviewSide(review.side)})</div>
-                  <div className="reviewAnnotationBody">{review.body}</div>
-                  <button
-                    type="button"
-                    className="reviewAnnotationDelete"
-                    onClick={() => setReviews((current) => current.filter((item) => item.id !== review.id))}
-                  >
-                    Delete
-                  </button>
-                </div>
-              );
-            }}
-            renderCustomHeader={(item) => {
-              if (item.type !== 'diff') return null;
-              const file = parsed.getFileForCodeViewItem(item);
-              if (file == null) return null;
-              return (
-                <DiffHeader
-                  file={file}
-                  onToggle={() => {
-                    setCollapsedIds((current) => {
-                      const next = new Set(current);
-                      if (next.has(file.id)) {
-                        next.delete(file.id);
-                      } else {
-                        next.add(file.id);
-                      }
-                      return next;
-                    });
-                  }}
-                />
-              );
-            }}
-          />
-        )}
-      </main>
-    </div>
+              }}
+            />
+          )}
+        </main>
+      </div>
+    </WorkerPoolContextProvider>
   );
+}
+
+async function fetchDiffMetadata(onStatus: (status: DiffStatusResponse) => void): Promise<DiffResponse> {
+  while (true) {
+    const result = await fetch('/api/diff', { cache: 'no-store' });
+    const data = (await result.json()) as DiffResponse | DiffStatusResponse;
+    if (result.status === 202 || data.status === 'fetching') {
+      onStatus(data as DiffStatusResponse);
+      await pollUntilReady(onStatus);
+      continue;
+    }
+    if (!result.ok || data.status === 'error') {
+      throw new Error(data.error ?? `Request failed (${result.status})`);
+    }
+    return data as DiffResponse;
+  }
+}
+
+async function pollUntilReady(onStatus: (status: DiffStatusResponse) => void): Promise<void> {
+  while (true) {
+    await delay(500);
+    const result = await fetch('/api/diff/status', { cache: 'no-store' });
+    const data = (await result.json()) as DiffStatusResponse;
+    if (!result.ok || data.status === 'error') {
+      throw new Error(data.error ?? `Request failed (${result.status})`);
+    }
+    onStatus(data);
+    if (data.status === 'ready') {
+      return;
+    }
+  }
+}
+
+async function fetchPatchText(url: string, onProgress: (downloaded: number, total?: number) => void): Promise<string> {
+  const result = await fetch(url, { cache: 'no-store' });
+  if (!result.ok) {
+    const details = await result.text();
+    throw new Error(details || `Could not load raw diff (${result.status})`);
+  }
+
+  const totalHeader = result.headers.get('content-length');
+  const total = totalHeader == null ? undefined : Number(totalHeader);
+  if (result.body == null) {
+    const text = await result.text();
+    onProgress(byteLength(text), Number.isFinite(total) ? total : undefined);
+    return text;
+  }
+
+  const reader = result.body.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let downloaded = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value == null) continue;
+    downloaded += value.byteLength;
+    onProgress(downloaded, Number.isFinite(total) ? total : undefined);
+    chunks.push(decoder.decode(value, { stream: true }));
+  }
+  chunks.push(decoder.decode());
+  return chunks.join('');
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function formatStatusDetails(status: DiffStatusResponse): string | null {
+  if (status.status === 'fetching' && status.bytesDownloaded != null) {
+    return `Downloaded ${formatBytes(status.bytesDownloaded)}`;
+  }
+  if (status.status === 'ready' && status.patchBytes != null) {
+    return `Downloaded ${formatBytes(status.patchBytes)}`;
+  }
+  return null;
+}
+
+function byteLength(text: string): number {
+  return new TextEncoder().encode(text).byteLength;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const kib = bytes / 1024;
+  if (kib < 1024) return `${kib.toFixed(kib >= 10 ? 1 : 2)} KB`;
+  const mib = kib / 1024;
+  return `${mib.toFixed(mib >= 10 ? 1 : 2)} MB`;
+}
+
+function formatSource(source: Source | undefined): string {
+  if (source === 'github') return 'GitHub';
+  return source ?? 'unknown';
+}
+
+function getLargeDiffLabel(_source: Source | undefined, patchBytes: number | undefined, files: number): string | null {
+  const isLarge = files >= 500 || (patchBytes != null && patchBytes >= 10 * 1024 * 1024);
+  if (!isLarge) return null;
+  const parts = ['Large diff'];
+  if (files > 0) parts.push(`${files} files`);
+  if (patchBytes != null) parts.push(formatBytes(patchBytes));
+  return parts.join(' · ');
 }
 
 function normalizeReviewSide(side: AnnotationSide | undefined): AnnotationSide {
@@ -591,9 +732,9 @@ function CommitList({
 function TreeHeader({ stats }: { stats: FileStats }) {
   return (
     <div className="treeHeader">
-            <span>{stats.files} files changed</span>
-            <span className="plus">+{stats.additions}</span>
-            <span className="minus">−{stats.deletions}</span>
+      <span>{stats.files} files changed</span>
+      <span className="plus">+{stats.additions}</span>
+      <span className="minus">−{stats.deletions}</span>
     </div>
   );
 }

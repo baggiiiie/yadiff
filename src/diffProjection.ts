@@ -6,6 +6,7 @@ import {
   type CodeViewItemScrollTarget,
   type DiffLineAnnotation,
   type FileDiffMetadata,
+  type ParsedPatch,
 } from '@pierre/diffs';
 import type { GitStatusEntry } from '@pierre/trees';
 
@@ -41,8 +42,7 @@ export interface DiffProjectionReview {
 }
 
 export interface CreateDiffProjectionInput<TReview extends DiffProjectionReview> {
-  patch: string;
-  diffKey: string;
+  patches: readonly ParsedPatch[];
   collapsedFileIds: ReadonlySet<ProjectedFileIdentity>;
   reviews: readonly TReview[];
   draftReview: TReview | null;
@@ -61,14 +61,16 @@ export interface DiffProjection<TReview extends DiffProjectionReview> {
   getScrollTarget(fileId: ProjectedFileIdentity): CodeViewItemScrollTarget | undefined;
 }
 
+export function parseDiffPatch(patch: string, diffKey: string): ParsedPatch[] {
+  return parsePatchFiles(patch, encodeURIComponent(diffKey));
+}
+
 export function createDiffProjection<TReview extends DiffProjectionReview>({
-  patch,
-  diffKey,
+  patches,
   collapsedFileIds,
   reviews,
   draftReview,
 }: CreateDiffProjectionInput<TReview>): DiffProjection<TReview> {
-  const patches = parsePatchFiles(patch, encodeURIComponent(diffKey));
   const items: CodeViewItem<TReview>[] = [];
   const files: ProjectedFile[] = [];
   const paths: string[] = [];
