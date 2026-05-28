@@ -68,6 +68,7 @@ function parseArgs(argv) {
       args.repo = requireValue(argv, ++index, '--repo');
     } else if (arg === '--port') {
       args.port = Number(requireValue(argv, ++index, '--port'));
+      args.portExplicit = true;
     } else if (arg === '--host') {
       args.host = requireValue(argv, ++index, '--host');
     } else if (arg === '--vcs') {
@@ -199,8 +200,8 @@ async function main() {
   app.use(vite.middlewares);
 
   const server = createServer(app);
-  await new Promise((resolvePromise) => server.listen(args.port, args.host, resolvePromise));
-  const url = `http://${args.host}:${args.port}/`;
+  const boundPort = await listenWithFallback(server, args.port, args.host, args.portExplicit);
+  const url = `http://${args.host}:${boundPort}/`;
   console.log(`yadiff: ${url}`);
   if (target.source === 'github') {
     console.log(`Fetching GitHub PR diff: ${displayTarget}`);
@@ -217,6 +218,30 @@ async function main() {
     const openerArgs = process.platform === 'win32' ? ['/c', 'start', url] : [url];
     spawn(opener, openerArgs, { detached: true, stdio: 'ignore' }).unref();
   }
+}
+
+function listenWithFallback(server, preferredPort, host, portExplicit) {
+  return new Promise((resolveListen, rejectListen) => {
+    const onError = (err) => {
+      if (err && err.code === 'EADDRINUSE' && !portExplicit) {
+        server.removeListener('error', onError);
+        console.warn(`yadiff: port ${preferredPort} is busy, picking a free one...`);
+        server.listen(0, host, () => {
+          const addr = server.address();
+          resolveListen(addr && typeof addr === 'object' ? addr.port : preferredPort);
+        });
+        server.once('error', rejectListen);
+        return;
+      }
+      rejectListen(err);
+    };
+    server.once('error', onError);
+    server.listen(preferredPort, host, () => {
+      server.removeListener('error', onError);
+      const addr = server.address();
+      resolveListen(addr && typeof addr === 'object' ? addr.port : preferredPort);
+    });
+  });
 }
 
 function formatSource(source) {
