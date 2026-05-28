@@ -5,8 +5,16 @@ A browser-based diff viewer. Acquires diffs from local VCS (git, jj) or remote s
 ## Language
 
 **Target**:
-The thing the user asked to diff. May be a local VCS revision/range/workspace state, or a remote source (e.g., a GitHub PR URL). A Target contains one or more **Diffs** (e.g., a PR has a combined diff plus per-commit diffs).
+The thing the user asked to diff. May be a local VCS revision/range/workspace state, or a remote source. A Target contains one or more **Diffs**.
 _Avoid_: ref, revset (when referring to the general concept of "what was requested")
+
+**GitHub Pull Request Target**:
+A public GitHub pull request URL used as a remote **Target**. It refers to the pull request as a reviewable change, not to a local repository checkout. It contains one combined **Diff** for the pull request.
+_Avoid_: GitHub URL, PR link (when a more precise term is needed)
+
+**Source**:
+Where and how yadiff acquires a **Diff** for a **Target**, such as git, jj, or GitHub.
+_Avoid_: VCS (when remote sources are included)
 
 **Diff**:
 The set of file changes resulting from a **Target**. What the user sees in the browser.

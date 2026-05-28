@@ -2,11 +2,11 @@
   "name": "yadiff",
   "version": "0.1.0",
   "type": "module",
-  "description": "Yet another diff viewer — local browser UI for git and jj diffs.",
+  "description": "Yet another diff viewer — browser UI for local git/jj diffs and public GitHub pull requests.",
   "license": "MIT",
   "author": "",
   "repository": "",
-  "keywords": ["diff", "git", "jj", "viewer", "cli"],
+  "keywords": ["diff", "git", "jj", "github", "pull-request", "viewer", "cli"],
   "bin": {
     "yadiff": "./bin/yadiff.js"
   },

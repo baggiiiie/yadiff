@@ -6,6 +6,9 @@ import { tmpdir } from 'node:os';
 export default defineConfig({
   plugins: [react()],
   cacheDir: resolve(tmpdir(), '.yadiff-vite'),
+  worker: {
+    format: 'es',
+  },
   server: {
     fs: {
       // Allow serving files from the entire package tree (needed when
