@@ -177,7 +177,8 @@ h1 span { color: #a1a1aa; font-family: ui-monospace, SFMono-Regular, Menlo, mono
   text-align: left;
 }
 .fileTitleButton:hover .fileTitleText { text-decoration: underline; }
-.chevron { width: 1em; color: #a1a1aa; flex: none; }
+.chevron { width: 1em; color: #a1a1aa; flex: none; display: inline-flex; align-items: center; justify-content: center; transition: transform 0.15s ease; transform: rotate(90deg); transform-origin: center center; }
+.chevron.collapsed { transform: rotate(0deg); }
 .changeIcon {
   width: 16px;
   height: 16px;
@@ -205,7 +206,7 @@ h1 span { color: #a1a1aa; font-family: ui-monospace, SFMono-Regular, Menlo, mono
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.renameArrow { color: #a1a1aa; }
+.renameArrow { color: #71717a; font-size: 0.85em; }
 .fileMeta { display: inline-flex; gap: 8px; align-items: center; color: #a1a1aa; font-size: 12px; flex: none; }
 .reviewAnnotation {
   margin: 8px 16px 10px 88px;
