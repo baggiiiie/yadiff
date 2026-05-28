@@ -43,7 +43,7 @@ Options:
 
 function parseArgs(argv) {
   const args = {
-    ref: undefined,
+    target: undefined,
     mode: undefined,
     repo: process.cwd(),
     port: 5177,
@@ -77,8 +77,8 @@ function parseArgs(argv) {
       args.open = false;
     } else if (arg?.startsWith('--')) {
       throw new Error(`Unknown option: ${arg}`);
-    } else if (args.ref == null) {
-      args.ref = arg;
+    } else if (args.target == null) {
+      args.target = arg;
     } else {
       throw new Error(`Unexpected argument: ${arg}`);
     }
@@ -87,8 +87,8 @@ function parseArgs(argv) {
   if (!Number.isFinite(args.port) || args.port <= 0) {
     throw new Error('--port must be a positive number');
   }
-  if (args.ref != null && args.mode != null) {
-    throw new Error('Pass either a ref/range/revset or one of --working, --staged, --dirty, not both.');
+  if (args.target != null && args.mode != null) {
+    throw new Error('Pass either a target (ref/range/revset) or one of --working, --staged, --dirty, not both.');
   }
 
   return args;
@@ -198,13 +198,13 @@ function selectBackend(args, repositories) {
     }
     throw new Error(`No git repository found at or above ${args.repo}`);
   }
-  if (jjRoot != null && isLikelyJjRevset(args.ref)) {
+  if (jjRoot != null && isLikelyJjRevset(args.target)) {
     return { kind: 'jj', repoRoot: jjRoot };
   }
-  if (gitRoot != null && isLikelyGitRange(args.ref)) {
+  if (gitRoot != null && isLikelyGitRange(args.target)) {
     return { kind: 'git', repoRoot: gitRoot };
   }
-  if (gitRoot != null && isGitRevision(gitRoot, args.ref)) {
+  if (gitRoot != null && isGitRevision(gitRoot, args.target)) {
     return { kind: 'git', repoRoot: gitRoot };
   }
   if (jjRoot != null) {
@@ -253,20 +253,20 @@ function getGitPatchArgs(args) {
   if (args.mode === 'dirty') {
     return ['diff', ...common, '--patch', 'HEAD', '--'];
   }
-  if (args.ref.includes('..')) {
-    return ['diff', ...common, '--patch', args.ref, '--'];
+  if (args.target.includes('..')) {
+    return ['diff', ...common, '--patch', args.target, '--'];
   }
-  return ['show', ...common, '--format=fuller', '--patch', args.ref, '--'];
+  return ['show', ...common, '--format=fuller', '--patch', args.target, '--'];
 }
 
 function getJjPatchArgs(args) {
   if (args.mode === 'staged') {
     throw new Error('--staged is only supported for git repositories.');
   }
-  return ['diff', '--git', '-r', args.ref ?? '@'];
+  return ['diff', '--git', '-r', args.target ?? '@'];
 }
 
-function getDisplayRef(args) {
+function getDisplayTarget(args) {
   if (args.mode === 'working') {
     return '--working';
   }
@@ -276,7 +276,7 @@ function getDisplayRef(args) {
   if (args.mode === 'dirty') {
     return '--dirty';
   }
-  return args.ref;
+  return args.target;
 }
 
 function getPatch(backend, args) {
@@ -299,13 +299,13 @@ async function main() {
     printUsage();
     return;
   }
-  if (args.ref == null && args.mode == null) {
+  if (args.target == null && args.mode == null) {
     printUsage();
     process.exitCode = 1;
     return;
   }
 
-  const displayRef = getDisplayRef(args);
+  const displayTarget = getDisplayTarget(args);
   const backend = selectBackend(args, resolveRepositories(args.repo));
   const repositoryName = backend.repoRoot.split('/').filter(Boolean).at(-1) ?? backend.repoRoot;
 
@@ -315,7 +315,7 @@ async function main() {
       const patch = await getPatch(backend, args);
       const head = getHead(backend);
       res.json({
-        ref: displayRef,
+        target: displayTarget,
         repositoryName,
         repoRoot: backend.repoRoot,
         vcs: backend.kind,
@@ -350,7 +350,7 @@ async function main() {
   console.log(`yadiff: ${url}`);
   console.log(`Repo: ${backend.repoRoot}`);
   console.log(`VCS:  ${backend.kind}`);
-  console.log(`Ref:  ${displayRef}`);
+  console.log(`Target: ${displayTarget}`);
 
   if (args.open) {
     const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
