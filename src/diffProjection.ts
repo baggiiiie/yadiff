@@ -166,9 +166,12 @@ function getAnnotations<TReview extends DiffProjectionReview>(
   reviews: readonly TReview[],
   draftReview: TReview | null
 ): DiffLineAnnotation<TReview>[] {
-  const annotations = reviews
-    .filter((review) => reviewMatchesFile(review, file))
-    .map((review) => createAnnotation(review));
+  const annotations: DiffLineAnnotation<TReview>[] = [];
+  for (const review of reviews) {
+    if (reviewMatchesFile(review, file)) {
+      annotations.push(createAnnotation(review));
+    }
+  }
 
   if (draftReview != null && reviewMatchesFile(draftReview, file)) {
     annotations.push(createAnnotation(draftReview));

@@ -101,7 +101,7 @@ export function App() {
   const [showBackgrounds, setShowBackgrounds] = useState(true);
   const [lineNumbers, setLineNumbers] = useState(true);
   const [collapsedIds, setCollapsedIds] = useState<Set<ProjectedFileIdentity>>(() => new Set());
-  const [pendingTreeScrollFileId, setPendingTreeScrollFileId] = useState<ProjectedFileIdentity | null>(null);
+  const pendingTreeScrollFileIdRef = useRef<ProjectedFileIdentity | null>(null);
   const [reviews, setReviews] = useState<LineReview[]>([]);
   const [draftReview, setDraftReview] = useState<DraftReview | null>(null);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'empty' | 'error'>('idle');
@@ -164,15 +164,16 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    setCollapsedIds(new Set());
-    setReviews([]);
-    setDraftReview(null);
     setCopyStatus('idle');
     setActiveCommitId(null);
     setCommitPatch(null);
   }, [response?.target]);
 
   useEffect(() => {
+    setCollapsedIds(new Set());
+    setReviews([]);
+    setDraftReview(null);
+
     if (activeCommitId == null) {
       setCommitPatch(null);
       return;
@@ -197,12 +198,6 @@ export function App() {
     }
     void fetchCommitPatch();
     return () => { cancelled = true; };
-  }, [activeCommitId]);
-
-  useEffect(() => {
-    setCollapsedIds(new Set());
-    setReviews([]);
-    setDraftReview(null);
   }, [activeCommitId]);
 
   const activePatch = activeCommitId != null ? (commitPatch ?? '') : patch;
@@ -268,7 +263,7 @@ export function App() {
       if (fileId == null) {
         return;
       }
-      setPendingTreeScrollFileId(fileId);
+      pendingTreeScrollFileIdRef.current = fileId;
       setCollapsedIds((current) => {
         if (!current.has(fileId)) {
           return current;
@@ -281,15 +276,16 @@ export function App() {
   }, [parsed]);
 
   useEffect(() => {
-    if (pendingTreeScrollFileId == null) {
+    const fileId = pendingTreeScrollFileIdRef.current;
+    if (fileId == null) {
       return;
     }
 
-    const file = parsed.getFileById(pendingTreeScrollFileId);
+    const file = parsed.getFileById(fileId);
     if (file?.collapsed === true) {
       return;
     }
-    const scrollTarget = parsed.getScrollTarget(pendingTreeScrollFileId);
+    const scrollTarget = parsed.getScrollTarget(fileId);
     if (scrollTarget == null) {
       return;
     }
@@ -300,10 +296,10 @@ export function App() {
         align: 'start',
         behavior: 'smooth-auto',
       });
-      setPendingTreeScrollFileId(null);
+      pendingTreeScrollFileIdRef.current = null;
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [parsed, pendingTreeScrollFileId]);
+  }, [parsed]);
 
   if (loadState === 'loading') {
     return <Shell message={loadingMessage} details={loadingDetails ?? undefined} />;
@@ -493,19 +489,17 @@ export function App() {
 }
 
 async function fetchDiffMetadata(onStatus: (status: DiffStatusResponse) => void): Promise<DiffResponse> {
-  while (true) {
-    const result = await fetch('/api/diff', { cache: 'no-store' });
-    const data = (await result.json()) as DiffResponse | DiffStatusResponse;
-    if (result.status === 202 || data.status === 'fetching') {
-      onStatus(data as DiffStatusResponse);
-      await pollUntilReady(onStatus);
-      continue;
-    }
-    if (!result.ok || data.status === 'error') {
-      throw new Error(data.error ?? `Request failed (${result.status})`);
-    }
-    return data as DiffResponse;
+  const result = await fetch('/api/diff', { cache: 'no-store' });
+  const data = (await result.json()) as DiffResponse | DiffStatusResponse;
+  if (result.status === 202 || data.status === 'fetching') {
+    onStatus(data as DiffStatusResponse);
+    await pollUntilReady(onStatus);
+    return fetchDiffMetadata(onStatus);
   }
+  if (!result.ok || data.status === 'error') {
+    throw new Error(data.error ?? `Request failed (${result.status})`);
+  }
+  return data as DiffResponse;
 }
 
 async function pollUntilReady(onStatus: (status: DiffStatusResponse) => void): Promise<void> {
