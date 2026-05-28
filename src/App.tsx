@@ -165,9 +165,14 @@ export function App() {
       return;
     }
 
-    const text = reviews
+    const refLabel = response?.vcs === 'jj'
+      ? `jj revision ${response.ref}`
+      : `Git commit ${response?.ref ?? 'unknown'}`;
+    const header = `Below is my review for ${refLabel}`;
+    const body = reviews
       .map((review, index) => `${index + 1}. ${review.path}:${review.lineNumber} (${formatReviewSide(review.side)})\n   ${review.body}`)
       .join('\n');
+    const text = `${header}\n${body}`;
     try {
       await navigator.clipboard.writeText(text);
       showCopyStatus('copied');
