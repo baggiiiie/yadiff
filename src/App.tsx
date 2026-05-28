@@ -9,7 +9,7 @@ type Overflow = 'scroll' | 'wrap';
 type LoadState = 'loading' | 'ready' | 'error';
 
 interface DiffResponse {
-  ref: string;
+  target: string;
   repositoryName: string;
   repoRoot: string;
   head: string;
@@ -139,13 +139,13 @@ export function App() {
     setReviews([]);
     setDraftReview(null);
     setCopyStatus('idle');
-  }, [response?.ref]);
+  }, [response?.target]);
 
   const parsed = useMemo<ParsedModel>(() => {
     if (response == null) {
       return INITIAL_PARSED_MODEL;
     }
-    const patches = parsePatchFiles(response.patch, encodeURIComponent(response.ref));
+    const patches = parsePatchFiles(response.patch, encodeURIComponent(response.target));
     return buildParsedModel(patches, collapsedIds, reviews, draftReview);
   }, [collapsedIds, draftReview, response, reviews]);
 
@@ -165,10 +165,10 @@ export function App() {
       return;
     }
 
-    const refLabel = response?.vcs === 'jj'
-      ? `jj revision ${response.ref}`
-      : `Git commit ${response?.ref ?? 'unknown'}`;
-    const header = `Below is my review for ${refLabel}`;
+    const targetLabel = response?.vcs === 'jj'
+      ? `jj revision ${response.target}`
+      : `Git commit ${response?.target ?? 'unknown'}`;
+    const header = `Below is my review for ${targetLabel}`;
     const body = reviews
       .map((review, index) => `${index + 1}. ${review.path}:${review.lineNumber} (${formatReviewSide(review.side)})\n   ${review.body}`)
       .join('\n');
@@ -186,7 +186,7 @@ export function App() {
   useEffect(() => {
     treeModel.resetPaths(parsed.paths);
     treeModel.setGitStatus(parsed.gitStatus);
-  }, [response?.ref, treeModel]);
+  }, [response?.target, treeModel]);
 
   useEffect(() => {
     onTreeSelectionRef.current = (paths) => {
@@ -245,7 +245,7 @@ export function App() {
       <header className="toolbar">
         <div className="titleBlock">
           <div className="eyebrow">yadiff</div>
-          <h1>{response?.repositoryName} <span>{response?.ref}</span></h1>
+          <h1>{response?.repositoryName} <span>{response?.target}</span></h1>
         </div>
         <div className="stats" aria-label="Diff stats">
           <strong>{parsed.stats.files}</strong> files
@@ -295,11 +295,11 @@ export function App() {
 
       <main className="viewer">
         {parsed.items.length === 0 ? (
-          <div className="empty">No patch content found for this ref.</div>
+          <div className="empty">No patch content found for this target.</div>
         ) : (
           <CodeView
             ref={viewerRef}
-            key={response?.ref}
+            key={response?.target}
             items={parsed.items}
             disableWorkerPool
             className="codeView"
