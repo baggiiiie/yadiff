@@ -239,7 +239,7 @@ export function App() {
     <div className="app">
       <header className="toolbar">
         <div className="titleBlock">
-          <div className="eyebrow">Local DiffsHub</div>
+          <div className="eyebrow">yadiff</div>
           <h1>{response?.repositoryName} <span>{response?.ref}</span></h1>
         </div>
         <div className="stats" aria-label="Diff stats">

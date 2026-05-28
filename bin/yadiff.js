@@ -11,20 +11,20 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
 
 function printUsage() {
-  console.log(`Usage: diffshub-local <git-ref-or-range-or-jj-revset> [options]
-       diffshub-local --working [options]
-       diffshub-local --staged [options]
-       diffshub-local --dirty [options]
+  console.log(`Usage: yadiff <git-ref-or-range-or-jj-revset> [options]
+       yadiff --working [options]
+       yadiff --staged [options]
+       yadiff --dirty [options]
 
 Examples:
-  diffshub-local abc123
-  diffshub-local main..feature
-  diffshub-local main...HEAD --repo ../my-repo
-  diffshub-local @ --repo ../my-jj-repo
-  diffshub-local 'mine() & mutable()' --vcs jj
-  diffshub-local --working
-  diffshub-local --staged
-  diffshub-local --dirty
+  yadiff abc123
+  yadiff main..feature
+  yadiff main...HEAD --repo ../my-repo
+  yadiff @ --repo ../my-jj-repo
+  yadiff 'mine() & mutable()' --vcs jj
+  yadiff --working
+  yadiff --staged
+  yadiff --dirty
 
 Options:
   --working          Show unstaged tracked-file changes (git diff), or jj @ if no git repo exists
@@ -347,7 +347,7 @@ async function main() {
   const server = createServer(app);
   await new Promise((resolvePromise) => server.listen(args.port, args.host, resolvePromise));
   const url = `http://${args.host}:${args.port}/`;
-  console.log(`Local DiffsHub: ${url}`);
+  console.log(`yadiff: ${url}`);
   console.log(`Repo: ${backend.repoRoot}`);
   console.log(`VCS:  ${backend.kind}`);
   console.log(`Ref:  ${displayRef}`);
