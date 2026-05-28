@@ -1,8 +1,9 @@
-import { parsePatchFiles, type AnnotationSide, type CodeViewDiffItem, type CodeViewItem, type DiffLineAnnotation, type FileDiffMetadata, type ParsedPatch } from '@pierre/diffs';
+import type { AnnotationSide } from '@pierre/diffs';
 import { CodeView, type CodeViewHandle } from '@pierre/diffs/react';
-import type { GitStatusEntry } from '@pierre/trees';
 import { FileTree, useFileTree } from '@pierre/trees/react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+
+import { createDiffProjection, type ProjectedFile, type ProjectedFileIdentity } from './diffProjection';
 
 type DiffStyle = 'split' | 'unified';
 type Overflow = 'scroll' | 'wrap';
@@ -35,7 +36,7 @@ interface FileStats {
 interface LineReview {
   kind: 'saved';
   id: string;
-  itemId: string;
+  fileId: ProjectedFileIdentity;
   path: string;
   lineNumber: number;
   side: AnnotationSide;
@@ -45,7 +46,7 @@ interface LineReview {
 interface DraftReview {
   kind: 'draft';
   id: string;
-  itemId: string;
+  fileId: ProjectedFileIdentity;
   path: string;
   lineNumber: number;
   side: AnnotationSide;
@@ -65,26 +66,6 @@ const REVIEW_UNSAFE_CSS = `
   }
 `;
 
-interface ParsedModel {
-  patches: ParsedPatch[];
-  items: CodeViewItem<ReviewAnnotation>[];
-  files: FileDiffMetadata[];
-  paths: string[];
-  itemIdByPath: Map<string, string>;
-  stats: FileStats;
-  gitStatus: GitStatusEntry[];
-}
-
-const INITIAL_PARSED_MODEL: ParsedModel = {
-  patches: [],
-  items: [],
-  files: [],
-  paths: [],
-  itemIdByPath: new Map(),
-  stats: { additions: 0, deletions: 0, files: 0 },
-  gitStatus: [],
-};
-
 export function App() {
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [error, setError] = useState<string | null>(null);
@@ -95,8 +76,8 @@ export function App() {
   const [overflow, setOverflow] = useState<Overflow>('scroll');
   const [showBackgrounds, setShowBackgrounds] = useState(true);
   const [lineNumbers, setLineNumbers] = useState(true);
-  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
-  const [pendingTreeScrollItemId, setPendingTreeScrollItemId] = useState<string | null>(null);
+  const [collapsedIds, setCollapsedIds] = useState<Set<ProjectedFileIdentity>>(() => new Set());
+  const [pendingTreeScrollFileId, setPendingTreeScrollFileId] = useState<ProjectedFileIdentity | null>(null);
   const [reviews, setReviews] = useState<LineReview[]>([]);
   const [draftReview, setDraftReview] = useState<DraftReview | null>(null);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'empty' | 'error'>('idle');
@@ -185,19 +166,25 @@ export function App() {
     setDraftReview(null);
   }, [activeCommitId]);
 
-  const parsed = useMemo<ParsedModel>(() => {
-    if (response == null) {
-      return INITIAL_PARSED_MODEL;
-    }
-    const activePatch = activeCommitId != null && commitPatch != null ? commitPatch : response.patch;
-    const patchKey = activeCommitId ?? response.target;
-    const patches = parsePatchFiles(activePatch, encodeURIComponent(patchKey));
-    return buildParsedModel(patches, collapsedIds, reviews, draftReview);
+  const parsed = useMemo(() => {
+    const activePatch = response == null
+      ? ''
+      : activeCommitId != null && commitPatch != null
+        ? commitPatch
+        : response.patch;
+    const diffKey = response == null ? 'empty' : activeCommitId ?? response.target;
+    return createDiffProjection<ReviewAnnotation>({
+      patch: activePatch,
+      diffKey,
+      collapsedFileIds: collapsedIds,
+      reviews,
+      draftReview,
+    });
   }, [activeCommitId, collapsedIds, commitPatch, draftReview, response, reviews]);
 
-  const allCollapsed = parsed.items.length > 0 && parsed.items.every((item) => collapsedIds.has(item.id));
+  const allCollapsed = parsed.files.length > 0 && parsed.files.every((file) => collapsedIds.has(file.id));
   const toggleAllCollapsed = () => {
-    setCollapsedIds(allCollapsed ? new Set() : new Set(parsed.items.map((item) => item.id)));
+    setCollapsedIds(allCollapsed ? new Set() : new Set(parsed.files.map((file) => file.id)));
   };
 
   const showCopyStatus = (status: 'copied' | 'empty' | 'error') => {
@@ -240,43 +227,46 @@ export function App() {
       if (selectedPath == null) {
         return;
       }
-      const itemId = parsed.itemIdByPath.get(selectedPath);
-      if (itemId == null) {
+      const fileId = parsed.getFileIdByPath(selectedPath);
+      if (fileId == null) {
         return;
       }
-      setPendingTreeScrollItemId(itemId);
+      setPendingTreeScrollFileId(fileId);
       setCollapsedIds((current) => {
-        if (!current.has(itemId)) {
+        if (!current.has(fileId)) {
           return current;
         }
         const next = new Set(current);
-        next.delete(itemId);
+        next.delete(fileId);
         return next;
       });
     };
-  }, [parsed.itemIdByPath]);
+  }, [parsed]);
 
   useEffect(() => {
-    if (pendingTreeScrollItemId == null) {
+    if (pendingTreeScrollFileId == null) {
       return;
     }
 
-    const item = parsed.items.find((item) => item.id === pendingTreeScrollItemId);
-    if (item?.collapsed === true) {
+    const file = parsed.getFileById(pendingTreeScrollFileId);
+    if (file?.collapsed === true) {
+      return;
+    }
+    const scrollTarget = parsed.getScrollTarget(pendingTreeScrollFileId);
+    if (scrollTarget == null) {
       return;
     }
 
     const frame = window.requestAnimationFrame(() => {
       viewerRef.current?.scrollTo({
-        type: 'item',
-        id: pendingTreeScrollItemId,
+        ...scrollTarget,
         align: 'start',
         behavior: 'smooth-auto',
       });
-      setPendingTreeScrollItemId(null);
+      setPendingTreeScrollFileId(null);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [parsed.items, pendingTreeScrollItemId]);
+  }, [parsed, pendingTreeScrollFileId]);
 
   if (loadState === 'loading') {
     return <Shell message="Fetching diff from local repository…" />;
@@ -342,13 +332,13 @@ export function App() {
       </aside>
 
       <main className="viewer">
-        {parsed.items.length === 0 ? (
+        {parsed.codeViewItems.length === 0 ? (
           <div className="empty">No patch content found for this target.</div>
         ) : (
           <CodeView
             ref={viewerRef}
             key={`${response?.target}:${activeCommitId ?? 'combined'}`}
-            items={parsed.items}
+            items={parsed.codeViewItems}
             disableWorkerPool
             className="codeView"
             options={{
@@ -370,14 +360,17 @@ export function App() {
                 if (context.item.type !== 'diff') {
                   return;
                 }
+                const file = parsed.getFileForCodeViewItem(context.item);
+                if (file == null) {
+                  return;
+                }
                 const side = normalizeReviewSide(range.endSide ?? range.side);
                 const lineNumber = range.end;
-                const path = context.item.fileDiff.name || context.item.fileDiff.prevName || context.item.id;
                 setDraftReview({
                   kind: 'draft',
-                  id: `draft:${context.item.id}:${side}:${lineNumber}`,
-                  itemId: context.item.id,
-                  path,
+                  id: `draft:${file.id}:${side}:${lineNumber}`,
+                  fileId: file.id,
+                  path: file.path,
                   lineNumber,
                   side,
                   body: '',
@@ -405,8 +398,8 @@ export function App() {
                         ...current,
                         {
                           kind: 'saved',
-                          id: `${review.itemId}:${review.side}:${review.lineNumber}:${Date.now()}`,
-                          itemId: review.itemId,
+                          id: `${review.fileId}:${review.side}:${review.lineNumber}:${Date.now()}`,
+                          fileId: review.fileId,
                           path: review.path,
                           lineNumber: review.lineNumber,
                           side: review.side,
@@ -434,16 +427,18 @@ export function App() {
             }}
             renderCustomHeader={(item) => {
               if (item.type !== 'diff') return null;
+              const file = parsed.getFileForCodeViewItem(item);
+              if (file == null) return null;
               return (
                 <DiffHeader
-                  item={item}
+                  file={file}
                   onToggle={() => {
                     setCollapsedIds((current) => {
                       const next = new Set(current);
-                      if (next.has(item.id)) {
-                        next.delete(item.id);
+                      if (next.has(file.id)) {
+                        next.delete(file.id);
                       } else {
-                        next.add(item.id);
+                        next.add(file.id);
                       }
                       return next;
                     });
@@ -458,93 +453,6 @@ export function App() {
   );
 }
 
-function buildParsedModel(
-  patches: ParsedPatch[],
-  collapsedIds: ReadonlySet<string>,
-  reviews: readonly LineReview[],
-  draftReview: DraftReview | null
-): ParsedModel {
-  const items: CodeViewItem<ReviewAnnotation>[] = [];
-  const files: FileDiffMetadata[] = [];
-  const paths: string[] = [];
-  const itemIdByPath = new Map<string, string>();
-  const gitStatus: GitStatusEntry[] = [];
-  const stats: FileStats = { additions: 0, deletions: 0, files: 0 };
-
-  for (let patchIndex = 0; patchIndex < patches.length; patchIndex++) {
-    const patch = patches[patchIndex];
-    for (let fileIndex = 0; fileIndex < patch.files.length; fileIndex++) {
-      const fileDiff = patch.files[fileIndex];
-      const path = fileDiff.name || fileDiff.prevName || `unknown-${patchIndex}-${fileIndex}`;
-      const itemId = `diff:${patchIndex}:${fileIndex}:${path}`;
-      const additions = countAdditions(fileDiff);
-      const deletions = countDeletions(fileDiff);
-
-      files.push(fileDiff);
-      paths.push(path);
-      itemIdByPath.set(path, itemId);
-      gitStatus.push({ path, status: statusForFile(fileDiff) });
-      stats.files++;
-      stats.additions += additions;
-      stats.deletions += deletions;
-      const isCollapsed = collapsedIds.has(itemId);
-      const annotations: DiffLineAnnotation<ReviewAnnotation>[] = reviews
-        .filter((review) => review.itemId === itemId)
-        .map((review) => ({
-          side: review.side,
-          lineNumber: review.lineNumber,
-          metadata: review,
-        }));
-      if (draftReview?.itemId === itemId) {
-        annotations.push({
-          side: draftReview.side,
-          lineNumber: draftReview.lineNumber,
-          metadata: draftReview,
-        });
-      }
-      items.push({
-        id: itemId,
-        type: 'diff',
-        fileDiff,
-        annotations,
-        collapsed: isCollapsed,
-        version: getItemVersion(isCollapsed, annotations),
-      } satisfies CodeViewDiffItem<ReviewAnnotation>);
-    }
-  }
-
-  return { patches, items, files, paths: Array.from(new Set(paths)), itemIdByPath, stats, gitStatus };
-}
-
-function getItemVersion(
-  isCollapsed: boolean,
-  annotations: readonly DiffLineAnnotation<ReviewAnnotation>[]
-): number {
-  let hash = isCollapsed ? 17 : 31;
-  for (const annotation of annotations) {
-    const metadata = annotation.metadata;
-    hash = hashNumber(hash, annotation.lineNumber);
-    hash = hashString(hash, annotation.side);
-    if (metadata != null) {
-      hash = hashString(hash, metadata.id);
-      hash = hashString(hash, metadata.body);
-      hash = hashString(hash, metadata.kind);
-    }
-  }
-  return hash;
-}
-
-function hashNumber(hash: number, value: number): number {
-  return (Math.imul(hash, 33) + value) >>> 0;
-}
-
-function hashString(hash: number, value: string): number {
-  for (let index = 0; index < value.length; index++) {
-    hash = (Math.imul(hash, 33) + value.charCodeAt(index)) >>> 0;
-  }
-  return hash;
-}
-
 function normalizeReviewSide(side: AnnotationSide | undefined): AnnotationSide {
   return side ?? 'additions';
 }
@@ -557,21 +465,6 @@ function formatCopyStatus(status: 'copied' | 'empty' | 'error') {
   if (status === 'copied') return 'Copied';
   if (status === 'empty') return 'No reviews';
   return 'Copy failed';
-}
-
-function statusForFile(file: FileDiffMetadata): GitStatusEntry['status'] {
-  if (file.type === 'new') return 'added';
-  if (file.type === 'deleted') return 'deleted';
-  if (file.type === 'rename-pure' || file.type === 'rename-changed') return 'renamed';
-  return 'modified';
-}
-
-function countAdditions(file: FileDiffMetadata) {
-  return file.hunks.reduce((total, hunk) => total + hunk.additionLines, 0);
-}
-
-function countDeletions(file: FileDiffMetadata) {
-  return file.hunks.reduce((total, hunk) => total + hunk.deletionLines, 0);
 }
 
 function DraftReviewBox({
@@ -607,27 +500,26 @@ function DraftReviewBox({
   );
 }
 
-function DiffHeader({ item, onToggle }: { item: CodeViewDiffItem<ReviewAnnotation>; onToggle: () => void }) {
-  const file = item.fileDiff;
+function DiffHeader({ file, onToggle }: { file: ProjectedFile; onToggle: () => void }) {
   return (
     <div className="customFileHeader">
       <button
         type="button"
         className="fileTitleButton"
-        aria-expanded={!item.collapsed}
+        aria-expanded={!file.collapsed}
         onClick={onToggle}
-        title={item.collapsed ? 'Expand file' : 'Collapse file'}
+        title={file.collapsed ? 'Expand file' : 'Collapse file'}
       >
-        <span className={`chevron ${item.collapsed ? 'collapsed' : ''}`} aria-hidden="true">›</span>
-        <ChangeIcon type={file.type} />
+        <span className={`chevron ${file.collapsed ? 'collapsed' : ''}`} aria-hidden="true">›</span>
+        <ChangeIcon type={file.changeType} />
         <span className="fileTitleText">
-          {file.prevName != null && file.prevName !== file.name ? (
+          {file.previousPath != null && file.previousPath !== file.path ? (
             <>
-              <span>{file.prevName}</span>
+              <span>{file.previousPath}</span>
               <span className="renameArrow">⟶</span>
             </>
           ) : null}
-          <span>{file.name}</span>
+          <span>{file.path}</span>
         </span>
       </button>
       <FileMeta file={file} />
@@ -635,30 +527,28 @@ function DiffHeader({ item, onToggle }: { item: CodeViewDiffItem<ReviewAnnotatio
   );
 }
 
-function ChangeIcon({ type }: { type: FileDiffMetadata['type'] }) {
+function ChangeIcon({ type }: { type: ProjectedFile['changeType'] }) {
   const label = type === 'new'
     ? 'Added file'
     : type === 'deleted'
       ? 'Deleted file'
-      : type === 'rename-pure' || type === 'rename-changed'
+      : type === 'renamed'
         ? 'Renamed file'
         : 'Modified file';
 
   return (
     <span className="changeIcon" data-change-type={type} aria-label={label} title={label}>
-      {type === 'new' ? '+' : type === 'deleted' ? '−' : type === 'rename-pure' || type === 'rename-changed' ? '↪' : '●'}
+      {type === 'new' ? '+' : type === 'deleted' ? '−' : type === 'renamed' ? '↪' : '●'}
     </span>
   );
 }
 
-function FileMeta({ file }: { file: FileDiffMetadata }) {
-  const additions = countAdditions(file);
-  const deletions = countDeletions(file);
+function FileMeta({ file }: { file: ProjectedFile }) {
   return (
     <span className="fileMeta">
-      <span>{file.type}</span>
-      <span className="plus">+{additions}</span>
-      <span className="minus">−{deletions}</span>
+      <span>{file.changeType}</span>
+      <span className="plus">+{file.additions}</span>
+      <span className="minus">−{file.deletions}</span>
     </span>
   );
 }
