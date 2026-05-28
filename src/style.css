@@ -32,19 +32,12 @@ button, input { font: inherit; }
   backdrop-filter: blur(16px);
 }
 
-.titleBlock { min-width: 220px; }
+.titleBlock { min-width: 220px; margin-right: auto; }
 .eyebrow { color: #a1a1aa; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
 h1 { font-size: 16px; line-height: 1.25; margin: 1px 0 0; font-weight: 650; }
 h1 span { color: #a1a1aa; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 500; }
 
-.stats {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  color: #d4d4d8;
-  white-space: nowrap;
-  margin-right: auto;
-}
+
 .poweredBy {
   color: #a1a1aa;
   font-size: 12px;
@@ -97,7 +90,7 @@ h1 span { color: #a1a1aa; font-family: ui-monospace, SFMono-Regular, Menlo, mono
   flex: 1;
   min-height: 0;
 }
-.treeHeader { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; color: #d4d4d8; font-size: 12px; }
+.treeHeader { display: flex; align-items: center; gap: 8px; padding: 8px 10px; color: #d4d4d8; font-size: 12px; }
 
 .commitList {
   flex: none;
@@ -266,6 +259,6 @@ h1 span { color: #a1a1aa; font-family: ui-monospace, SFMono-Regular, Menlo, mono
 @media (max-width: 800px) {
   .app { grid-template-columns: 1fr; grid-template-rows: auto 180px minmax(0, 1fr); grid-template-areas: "toolbar" "sidebar" "viewer"; }
   .toolbar { align-items: flex-start; flex-direction: column; }
-  .stats { margin-right: 0; }
+
   .sidebar { border-right: 0; border-bottom: 1px solid rgba(255,255,255,0.08); padding: 8px; }
 }

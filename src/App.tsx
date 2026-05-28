@@ -212,8 +212,8 @@ export function App() {
     }
 
     const targetLabel = response?.vcs === 'jj'
-      ? `jj revision ${response.target}`
-      : `Git commit ${response?.target ?? 'unknown'}`;
+      ? `jj revision "${response.target}"`
+      : `Git commit "${response?.target ?? 'unknown'}"`;
     const header = `Below is my review for ${targetLabel}`;
     const body = reviews
       .map((review, index) => `${index + 1}. ${review.path}:${review.lineNumber} (${formatReviewSide(review.side)})\n   ${review.body}`)
@@ -292,11 +292,6 @@ export function App() {
         <div className="titleBlock">
           <div className="eyebrow">yadiff</div>
           <h1>{response?.repositoryName} <span>{response?.target}</span></h1>
-        </div>
-        <div className="stats" aria-label="Diff stats">
-          <strong>{parsed.stats.files}</strong> files
-          <span className="plus">+{parsed.stats.additions}</span>
-          <span className="minus">−{parsed.stats.deletions}</span>
         </div>
         <a
           className="poweredBy"
@@ -706,8 +701,9 @@ function CommitList({
 function TreeHeader({ stats }: { stats: FileStats }) {
   return (
     <div className="treeHeader">
-      <span>Files changed</span>
-      <strong>{stats.files}</strong>
+            <span>{stats.files} files changed</span>
+            <span className="plus">+{stats.additions}</span>
+            <span className="minus">−{stats.deletions}</span>
     </div>
   );
 }
