@@ -623,13 +623,13 @@ function DiffHeader({ item, onToggle }: { item: CodeViewDiffItem<ReviewAnnotatio
         onClick={onToggle}
         title={item.collapsed ? 'Expand file' : 'Collapse file'}
       >
-        <span className="chevron" aria-hidden="true">{item.collapsed ? '▸' : '▾'}</span>
+        <span className={`chevron ${item.collapsed ? 'collapsed' : ''}`} aria-hidden="true">›</span>
         <ChangeIcon type={file.type} />
         <span className="fileTitleText">
           {file.prevName != null && file.prevName !== file.name ? (
             <>
               <span>{file.prevName}</span>
-              <span className="renameArrow">→</span>
+              <span className="renameArrow">⟶</span>
             </>
           ) : null}
           <span>{file.name}</span>
