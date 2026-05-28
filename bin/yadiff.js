@@ -266,6 +266,59 @@ function getJjPatchArgs(args) {
   return ['diff', '--git', '-r', args.target ?? '@'];
 }
 
+function getCommits(backend, args) {
+  if (args.mode != null) {
+    return [];
+  }
+  if (backend.kind === 'git') {
+    return getGitCommits(backend.repoRoot, args);
+  }
+  return getJjCommits(backend.repoRoot, args);
+}
+
+function getGitCommits(repoRoot, args) {
+  const target = args.target;
+  if (target.includes('..')) {
+    const logOutput = trySync(() => runGitSync(repoRoot, [
+      'log', '--reverse', '--format=%H %s', target,
+    ]));
+    if (!logOutput) return [];
+    return logOutput.split('\n').filter(Boolean).map((line) => {
+      const spaceIndex = line.indexOf(' ');
+      const id = line.slice(0, spaceIndex);
+      const message = line.slice(spaceIndex + 1);
+      return { id, shortId: id.slice(0, 7), message };
+    });
+  }
+  // Single ref — no multi-commit navigation needed
+  return [];
+}
+
+function getJjCommits(repoRoot, args) {
+  const target = args.target ?? '@';
+  // Check if the revset resolves to multiple revisions
+  const logOutput = trySync(() => runJjSync(repoRoot, [
+    'log', '-r', target, '--no-graph',
+    '-T', 'commit_id ++ "\t" ++ description.first_line() ++ "\n"',
+  ]));
+  if (!logOutput) return [];
+  const lines = logOutput.split('\n').filter(Boolean);
+  if (lines.length <= 1) return [];
+  // Multiple revisions — return them in chronological order (reverse jj's default)
+  return lines.reverse().map((line) => {
+    const [id, message] = line.split('\t');
+    return { id, shortId: id.slice(0, 7), message: message ?? '' };
+  });
+}
+
+async function getCommitPatch(backend, commitId) {
+  if (backend.kind === 'git') {
+    const common = ['--find-renames', '--find-copies', '--no-ext-diff', '--no-color'];
+    return runGit(backend.repoRoot, ['show', ...common, '--format=', '--patch', commitId, '--']);
+  }
+  return runJj(backend.repoRoot, ['diff', '--git', '-r', commitId]);
+}
+
 function getDisplayTarget(args) {
   if (args.mode === 'working') {
     return '--working';
@@ -309,6 +362,8 @@ async function main() {
   const backend = selectBackend(args, resolveRepositories(args.repo));
   const repositoryName = backend.repoRoot.split('/').filter(Boolean).at(-1) ?? backend.repoRoot;
 
+  const commits = getCommits(backend, args);
+
   const app = express();
   app.get('/api/diff', async (_req, res) => {
     try {
@@ -322,7 +377,17 @@ async function main() {
         head,
         patch,
         patchBytes: Buffer.byteLength(patch),
+        commits: commits.map(({ id, shortId, message }) => ({ id, shortId, message })),
       });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.get('/api/diff/:commitId', async (req, res) => {
+    try {
+      const patch = await getCommitPatch(backend, req.params.commitId);
+      res.json({ patch, patchBytes: Buffer.byteLength(patch) });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
     }
