@@ -12,6 +12,7 @@
   },
   "files": [
     "bin/",
+    "lib/",
     "src/",
     "index.html",
     "vite.config.ts",

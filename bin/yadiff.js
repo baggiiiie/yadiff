@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
+
+import { createTarget } from '../lib/target/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
@@ -109,241 +111,11 @@ function requireChoice(value, flag, choices) {
   return value;
 }
 
-function runGitSync(repo, args) {
-  return runCommandSync('git', args, repo);
-}
-
-function runGit(repo, args) {
-  return runCommand('git', args, repo);
-}
-
-function runJjSync(repo, args) {
-  return runCommandSync('jj', ['--no-pager', '--color', 'never', ...args], repo);
-}
-
-function runJj(repo, args) {
-  return runCommand('jj', ['--no-pager', '--color', 'never', ...args], repo);
-}
-
-function runCommandSync(command, args, cwd) {
-  const result = spawnSync(command, args, {
-    cwd,
-    encoding: 'utf8',
-    maxBuffer: 10 * 1024 * 1024,
-  });
-  if (result.status !== 0) {
-    throw new Error((result.stderr || result.stdout || `${command} ${args.join(' ')} failed`).trim());
-  }
-  return result.stdout.trim();
-}
-
-function runCommand(command, args, cwd) {
-  return new Promise((resolvePromise, reject) => {
-    const child = spawn(command, args, {
-      cwd,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    const stdout = [];
-    const stderr = [];
-    child.stdout.on('data', (chunk) => stdout.push(chunk));
-    child.stderr.on('data', (chunk) => stderr.push(chunk));
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolvePromise(Buffer.concat(stdout).toString('utf8'));
-        return;
-      }
-      reject(new Error(Buffer.concat(stderr).toString('utf8').trim() || `${command} ${args.join(' ')} failed (${code})`));
-    });
-  });
-}
-
-function trySync(fn) {
-  try {
-    return fn();
-  } catch {
-    return undefined;
-  }
-}
-
-function resolveRepositories(repo) {
-  const gitRoot = trySync(() => runGitSync(repo, ['rev-parse', '--show-toplevel']));
-  const jjRoot = trySync(() => runJjSync(repo, ['root']));
-  return { gitRoot, jjRoot };
-}
-
-function selectBackend(args, repositories) {
-  const { gitRoot, jjRoot } = repositories;
-  if (args.vcs === 'git') {
-    if (gitRoot == null) {
-      throw new Error(`No git repository found at or above ${args.repo}`);
-    }
-    return { kind: 'git', repoRoot: gitRoot };
-  }
-  if (args.vcs === 'jj') {
-    if (jjRoot == null) {
-      throw new Error(`No jj repository found at or above ${args.repo}`);
-    }
-    if (args.mode === 'staged') {
-      throw new Error('--staged is only supported for git repositories.');
-    }
-    return { kind: 'jj', repoRoot: jjRoot };
-  }
-  if (args.mode != null) {
-    if (gitRoot != null) {
-      return { kind: 'git', repoRoot: gitRoot };
-    }
-    if (jjRoot != null && args.mode !== 'staged') {
-      return { kind: 'jj', repoRoot: jjRoot };
-    }
-    throw new Error(`No git repository found at or above ${args.repo}`);
-  }
-  if (jjRoot != null && isLikelyJjRevset(args.target)) {
-    return { kind: 'jj', repoRoot: jjRoot };
-  }
-  if (gitRoot != null && isLikelyGitRange(args.target)) {
-    return { kind: 'git', repoRoot: gitRoot };
-  }
-  if (gitRoot != null && isGitRevision(gitRoot, args.target)) {
-    return { kind: 'git', repoRoot: gitRoot };
-  }
-  if (jjRoot != null) {
-    return { kind: 'jj', repoRoot: jjRoot };
-  }
-  if (gitRoot != null) {
-    return { kind: 'git', repoRoot: gitRoot };
-  }
-  throw new Error(`No git or jj repository found at or above ${args.repo}`);
-}
-
-function isGitRevision(repo, ref) {
-  if (ref == null) {
-    return false;
-  }
-  const result = spawnSync('git', ['rev-parse', '--verify', `${ref}^{commit}`], {
-    cwd: repo,
-    encoding: 'utf8',
-  });
-  return result.status === 0;
-}
-
-function isLikelyGitRange(ref) {
-  return ref?.includes('..') === true;
-}
-
-function isLikelyJjRevset(ref) {
-  if (ref == null) {
-    return false;
-  }
-  return ref === '@'
-    || ref.startsWith('@')
-    || ref.includes('::')
-    || /[|&~]/.test(ref)
-    || /\b(?:all|author|bookmarks|children|connected|conflicts|description|destination|empty|file|git_head|heads|immutable|latest|mine|mutable|none|parents|present|remote_bookmarks|root|tags|trunk|visible|working_copies)\s*\(/.test(ref);
-}
-
-function getGitPatchArgs(args) {
-  const common = ['--find-renames', '--find-copies', '--no-ext-diff', '--no-color'];
-  if (args.mode === 'working') {
-    return ['diff', ...common, '--patch', '--'];
-  }
-  if (args.mode === 'staged') {
-    return ['diff', ...common, '--cached', '--patch', '--'];
-  }
-  if (args.mode === 'dirty') {
-    return ['diff', ...common, '--patch', 'HEAD', '--'];
-  }
-  if (args.target.includes('..')) {
-    return ['diff', ...common, '--patch', args.target, '--'];
-  }
-  return ['show', ...common, '--format=fuller', '--patch', args.target, '--'];
-}
-
-function getJjPatchArgs(args) {
-  if (args.mode === 'staged') {
-    throw new Error('--staged is only supported for git repositories.');
-  }
-  return ['diff', '--git', '-r', args.target ?? '@'];
-}
-
-function getCommits(backend, args) {
-  if (args.mode != null) {
-    return [];
-  }
-  if (backend.kind === 'git') {
-    return getGitCommits(backend.repoRoot, args);
-  }
-  return getJjCommits(backend.repoRoot, args);
-}
-
-function getGitCommits(repoRoot, args) {
-  const target = args.target;
-  if (target.includes('..')) {
-    const logOutput = trySync(() => runGitSync(repoRoot, [
-      'log', '--reverse', '--format=%H %s', target,
-    ]));
-    if (!logOutput) return [];
-    return logOutput.split('\n').filter(Boolean).map((line) => {
-      const spaceIndex = line.indexOf(' ');
-      const id = line.slice(0, spaceIndex);
-      const message = line.slice(spaceIndex + 1);
-      return { id, shortId: id.slice(0, 7), message };
-    });
-  }
-  // Single ref — no multi-commit navigation needed
-  return [];
-}
-
-function getJjCommits(repoRoot, args) {
-  const target = args.target ?? '@';
-  // Check if the revset resolves to multiple revisions
-  const logOutput = trySync(() => runJjSync(repoRoot, [
-    'log', '-r', target, '--no-graph',
-    '-T', 'commit_id ++ "\t" ++ description.first_line() ++ "\n"',
-  ]));
-  if (!logOutput) return [];
-  const lines = logOutput.split('\n').filter(Boolean);
-  if (lines.length <= 1) return [];
-  // Multiple revisions — return them in chronological order (reverse jj's default)
-  return lines.reverse().map((line) => {
-    const [id, message] = line.split('\t');
-    return { id, shortId: id.slice(0, 7), message: message ?? '' };
-  });
-}
-
-async function getCommitPatch(backend, commitId) {
-  if (backend.kind === 'git') {
-    const common = ['--find-renames', '--find-copies', '--no-ext-diff', '--no-color'];
-    return runGit(backend.repoRoot, ['show', ...common, '--format=', '--patch', commitId, '--']);
-  }
-  return runJj(backend.repoRoot, ['diff', '--git', '-r', commitId]);
-}
-
 function getDisplayTarget(args) {
-  if (args.mode === 'working') {
-    return '--working';
-  }
-  if (args.mode === 'staged') {
-    return '--staged';
-  }
-  if (args.mode === 'dirty') {
-    return '--dirty';
-  }
+  if (args.mode === 'working') return '--working';
+  if (args.mode === 'staged') return '--staged';
+  if (args.mode === 'dirty') return '--dirty';
   return args.target;
-}
-
-function getPatch(backend, args) {
-  if (backend.kind === 'git') {
-    return runGit(backend.repoRoot, getGitPatchArgs(args));
-  }
-  return runJj(backend.repoRoot, getJjPatchArgs(args));
-}
-
-function getHead(backend) {
-  if (backend.kind === 'git') {
-    return trySync(() => runGitSync(backend.repoRoot, ['rev-parse', '--short', 'HEAD'])) ?? 'unknown';
-  }
-  return trySync(() => runJjSync(backend.repoRoot, ['log', '-r', '@', '--no-graph', '-T', 'commit_id.short()'])) ?? 'unknown';
 }
 
 async function main() {
@@ -359,25 +131,23 @@ async function main() {
   }
 
   const displayTarget = getDisplayTarget(args);
-  const backend = selectBackend(args, resolveRepositories(args.repo));
-  const repositoryName = backend.repoRoot.split('/').filter(Boolean).at(-1) ?? backend.repoRoot;
-
-  const commits = getCommits(backend, args);
+  const target = createTarget(args);
+  const repositoryName = target.repoRoot.split('/').filter(Boolean).at(-1) ?? target.repoRoot;
 
   const app = express();
   app.get('/api/diff', async (_req, res) => {
     try {
-      const patch = await getPatch(backend, args);
-      const head = getHead(backend);
+      const patch = await target.getPatch();
+      const head = target.getHead();
       res.json({
         target: displayTarget,
         repositoryName,
-        repoRoot: backend.repoRoot,
-        vcs: backend.kind,
+        repoRoot: target.repoRoot,
+        vcs: target.kind,
         head,
         patch,
         patchBytes: Buffer.byteLength(patch),
-        commits: commits.map(({ id, shortId, message }) => ({ id, shortId, message })),
+        commits: target.getCommits().map(({ id, shortId, message }) => ({ id, shortId, message })),
       });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
@@ -386,7 +156,7 @@ async function main() {
 
   app.get('/api/diff/:commitId', async (req, res) => {
     try {
-      const patch = await getCommitPatch(backend, req.params.commitId);
+      const patch = await target.getCommitPatch(req.params.commitId);
       res.json({ patch, patchBytes: Buffer.byteLength(patch) });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
@@ -395,7 +165,7 @@ async function main() {
 
   app.get('/api/raw.diff', async (_req, res) => {
     try {
-      const patch = await getPatch(backend, args);
+      const patch = await target.getPatch();
       res.type('text/plain').send(patch);
     } catch (error) {
       res.status(500).type('text/plain').send(error instanceof Error ? error.message : String(error));
@@ -413,8 +183,8 @@ async function main() {
   await new Promise((resolvePromise) => server.listen(args.port, args.host, resolvePromise));
   const url = `http://${args.host}:${args.port}/`;
   console.log(`yadiff: ${url}`);
-  console.log(`Repo: ${backend.repoRoot}`);
-  console.log(`VCS:  ${backend.kind}`);
+  console.log(`Repo: ${target.repoRoot}`);
+  console.log(`VCS:  ${target.kind}`);
   console.log(`Target: ${displayTarget}`);
 
   if (args.open) {
