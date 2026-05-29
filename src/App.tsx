@@ -102,6 +102,7 @@ export function App() {
   const [lineNumbers, setLineNumbers] = useState(true);
   const [collapsedIds, setCollapsedIds] = useState<Set<ProjectedFileIdentity>>(() => new Set());
   const pendingTreeScrollFileIdRef = useRef<ProjectedFileIdentity | null>(null);
+  const [scrollTrigger, setScrollTrigger] = useState(0);
   const [reviews, setReviews] = useState<LineReview[]>([]);
   const [draftReview, setDraftReview] = useState<DraftReview | null>(null);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'empty' | 'error'>('idle');
@@ -264,6 +265,7 @@ export function App() {
         return;
       }
       pendingTreeScrollFileIdRef.current = fileId;
+      setScrollTrigger((c) => c + 1);
       setCollapsedIds((current) => {
         if (!current.has(fileId)) {
           return current;
@@ -299,7 +301,7 @@ export function App() {
       pendingTreeScrollFileIdRef.current = null;
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [parsed]);
+  }, [parsed, scrollTrigger]);
 
   if (loadState === 'loading') {
     return <Shell message={loadingMessage} details={loadingDetails ?? undefined} />;
