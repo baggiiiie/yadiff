@@ -122,6 +122,13 @@ export function App() {
   });
 
   useEffect(() => {
+    const session = new EventSource('/api/session');
+    return () => {
+      session.close();
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoadState('loading');
