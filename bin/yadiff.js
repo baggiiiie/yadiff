@@ -165,6 +165,66 @@ async function main() {
   const repositoryName = target.repositoryName ?? target.repoRoot.split('/').filter(Boolean).at(-1) ?? target.repoRoot;
 
   const app = express();
+  let activeBrowserSessions = 0;
+  let browserShutdownTimer = null;
+
+  function cancelBrowserShutdown() {
+    if (browserShutdownTimer == null) return;
+    clearTimeout(browserShutdownTimer);
+    browserShutdownTimer = null;
+  }
+
+  function scheduleBrowserShutdown() {
+    if (browserShutdownTimer != null || activeBrowserSessions > 0) return;
+
+    browserShutdownTimer = setTimeout(() => {
+      browserShutdownTimer = null;
+      if (activeBrowserSessions > 0) return;
+
+      console.log('yadiff: browser session closed, shutting down server...');
+      server.close((error) => {
+        if (error) {
+          console.error(error instanceof Error ? error.message : String(error));
+          process.exit(1);
+        }
+        process.exit(0);
+      });
+      server.closeIdleConnections?.();
+    }, 2000);
+    browserShutdownTimer.unref?.();
+  }
+
+  app.get('/api/session', (req, res) => {
+    activeBrowserSessions += 1;
+    cancelBrowserShutdown();
+
+    req.socket.setTimeout(0);
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.flushHeaders?.();
+    res.write('retry: 1000\n');
+    res.write('event: session\ndata: {"status":"connected"}\n\n');
+
+    const heartbeat = setInterval(() => {
+      res.write(`: heartbeat ${Date.now()}\n\n`);
+    }, 15000);
+    heartbeat.unref?.();
+
+    let closed = false;
+    req.on('close', () => {
+      if (closed) return;
+      closed = true;
+      clearInterval(heartbeat);
+      activeBrowserSessions = Math.max(0, activeBrowserSessions - 1);
+      if (activeBrowserSessions === 0) {
+        scheduleBrowserShutdown();
+      }
+    });
+  });
 
   app.get('/api/diff/status', (_req, res) => {
     try {

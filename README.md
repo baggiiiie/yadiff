@@ -23,7 +23,7 @@ npm install -g yadiff
 yadiff HEAD
 ```
 
-The command starts a local server, opens the browser, acquires a diff from the selected source, and serves the patch to the browser.
+The command starts a local server, opens the browser, acquires a diff from the selected source, and serves the patch to the browser. Closing all yadiff browser tabs closes the local server after a short grace period.
 
 ### Examples:
 
