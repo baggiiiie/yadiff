@@ -1,6 +1,6 @@
 {
   "name": "yadiff",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "type": "module",
   "description": "Yet another diff viewer — browser UI for local git/jj diffs and public GitHub pull requests.",
   "license": "MIT",
@@ -20,30 +20,32 @@
   "files": [
     "bin/",
     "lib/",
-    "src/",
-    "index.html",
-    "vite.config.ts",
-    "tsconfig.json",
+    "dist/",
+    "THIRD-PARTY-LICENSES",
     "README.md"
   ],
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.13.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
-    "dev": "node ./bin/yadiff.js",
+    "dev": "node ./bin/yadiff.js --dev",
     "typecheck": "tsc --noEmit",
-    "build": "vite build"
+    "build": "vite build",
+    "prepack": "npm run build"
   },
   "dependencies": {
+    "express": "^5.2.0"
+  },
+  "devDependencies": {
     "@pierre/diffs": "^1.2.3",
     "@pierre/trees": "^1.0.0-beta.4",
     "@vitejs/plugin-react": "^5.1.1",
     "vite": "^7.2.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "express": "^5.2.0"
-  },
-  "devDependencies": {
     "typescript": "^5.9.3",
     "@types/express": "^5.0.5",
     "@types/node": "^24.10.1",
