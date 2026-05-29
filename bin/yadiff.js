@@ -2,10 +2,10 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { dirname, resolve } from 'node:path';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 
 import { createTarget } from '../lib/target/index.js';
 
@@ -40,6 +40,7 @@ Options:
   --port <number>   Port to listen on (default: 5177)
   --host <host>     Host to bind (default: 127.0.0.1)
   --no-open         Do not open the browser automatically
+  --dev             Use Vite dev server (for development only)
   -h, --help        Show this help
 `);
 }
@@ -53,6 +54,7 @@ function parseArgs(argv) {
     host: '127.0.0.1',
     open: true,
     vcs: 'auto',
+    dev: false,
   };
 
   for (let index = 0; index < argv.length; index++) {
@@ -79,6 +81,8 @@ function parseArgs(argv) {
       args.vcs = 'jj';
     } else if (arg === '--no-open') {
       args.open = false;
+    } else if (arg === '--dev') {
+      args.dev = true;
     } else if (arg?.startsWith('--')) {
       throw new Error(`Unknown option: ${arg}`);
     } else if (args.target == null) {
@@ -118,6 +122,30 @@ function getDisplayTarget(args) {
   if (args.mode === 'staged') return '--staged';
   if (args.mode === 'dirty') return '--dirty';
   return args.target;
+}
+
+async function attachViteDevMiddleware(app) {
+  const { createServer: createViteServer } = await import('vite');
+  const vite = await createViteServer({
+    root: projectRoot,
+    appType: 'spa',
+    server: { middlewareMode: true },
+  });
+  app.use(vite.middlewares);
+}
+
+function attachStaticMiddleware(app) {
+  const distPath = resolve(projectRoot, 'dist');
+  if (!existsSync(distPath)) {
+    throw new Error(
+      `dist/ directory not found at ${distPath}. Run "npm run build" first, or use --dev for development.`
+    );
+  }
+  app.use(express.static(distPath));
+  // SPA fallback: serve index.html for any non-API, non-asset request
+  app.use((_req, res) => {
+    res.sendFile(resolve(distPath, 'index.html'));
+  });
 }
 
 async function main() {
@@ -192,12 +220,11 @@ async function main() {
     }
   });
 
-  const vite = await createViteServer({
-    root: projectRoot,
-    appType: 'spa',
-    server: { middlewareMode: true },
-  });
-  app.use(vite.middlewares);
+  if (args.dev) {
+    await attachViteDevMiddleware(app);
+  } else {
+    attachStaticMiddleware(app);
+  }
 
   const server = createServer(app);
   const boundPort = await listenWithFallback(server, args.port, args.host, args.portExplicit);
