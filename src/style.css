@@ -33,7 +33,7 @@ button, input { font: inherit; }
 }
 
 .titleBlock { min-width: 220px; margin-right: auto; }
-.eyebrow { color: #a1a1aa; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+.eyebrow { color: #a1a1aa; font-size: 11px; letter-spacing: 0.08em; }
 h1 { font-size: 16px; line-height: 1.25; margin: 1px 0 0; font-weight: 650; }
 h1 span { color: #a1a1aa; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 500; }
 .largeDiffBadge { display: inline-flex; margin-top: 4px; padding: 2px 7px; border: 1px solid rgba(250, 204, 21, 0.22); border-radius: 999px; background: rgba(250, 204, 21, 0.09); color: #fde68a; font-size: 11px; }
