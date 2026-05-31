@@ -33,8 +33,12 @@ An opaque identity for a file inside one active **Diff Projection**. Callers may
 _Avoid_: CodeView item id, parser index
 
 **Review**:
-A user-authored note attached to a line in a **Diff**. Saved Reviews are portable as path, side, and line number, while UI-local Review state may retain Projected File Identity to avoid ambiguous attachment.
+A user-authored note attached to a **Review Target** in a **Diff**. A file Review is represented as line 0, and a single-line Review is represented as a range whose start and end are the same. Saved Reviews are portable by path plus side/line range, while UI-local Review state may retain Projected File Identity to avoid ambiguous attachment.
 _Avoid_: comment (too broad), annotation (renderer mechanism)
+
+**Review Target**:
+The anchor coordinates for a **Review**: a file identity, a path, a side (`additions` or `deletions`), and a start/end line range. A file-level review uses line 0 for both endpoints. The side is shared across the range (reviews never span both sides).
+_Avoid_: ReviewPoint (removed — side is per-target, not per-endpoint)
 
 **Keyboard Router**:
 The browser-side module that decides whether a key event belongs to editable input, tree search, or yadiff app shortcuts. It routes commands and focus; it must not synthesize text input.

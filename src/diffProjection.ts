@@ -33,12 +33,14 @@ export interface ProjectedFile {
 
 export interface DiffProjectionReview {
   id: string;
-  path: string;
-  lineNumber: number;
-  side: AnnotationSide;
-  fileId?: ProjectedFileIdentity;
   body?: string;
   kind?: string;
+  target: {
+    fileId?: ProjectedFileIdentity;
+    path: string;
+    side: AnnotationSide;
+    endLine: number;
+  };
 }
 
 export interface CreateDiffProjectionInput<TReview extends DiffProjectionReview> {
@@ -184,14 +186,14 @@ function createAnnotation<TReview extends DiffProjectionReview>(review: TReview)
   // @pierre/diffs uses a conditional metadata type to support undefined metadata.
   // Diff Projection reviews always carry metadata, so keep the cast local to this adapter point.
   return {
-    side: review.side,
-    lineNumber: review.lineNumber,
+    side: review.target.side,
+    lineNumber: review.target.endLine,
     metadata: review,
   } as unknown as DiffLineAnnotation<TReview>;
 }
 
 function reviewMatchesFile(review: DiffProjectionReview, file: ProjectedFile): boolean {
-  return review.fileId != null ? review.fileId === file.id : review.path === file.path;
+  return review.target.fileId != null ? review.target.fileId === file.id : review.target.path === file.path;
 }
 
 function getItemVersion<TReview extends DiffProjectionReview>(
