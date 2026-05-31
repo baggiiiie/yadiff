@@ -23,6 +23,8 @@ button, input { font: inherit; }
 
 .toolbar {
   grid-area: toolbar;
+  position: relative;
+  z-index: 50;
   display: flex;
   align-items: center;
   gap: 18px;
@@ -50,6 +52,45 @@ h1 span { color: #a1a1aa; font-family: ui-monospace, SFMono-Regular, Menlo, mono
 .minus { color: #f87171; }
 
 .controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.shortcutHelp { position: relative; }
+.shortcutHelpButton {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.04);
+  color: #d4d4d8;
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.shortcutHelpButton:hover,
+.shortcutHelpButton[aria-expanded='true'] { background: rgba(255, 255, 255, 0.14); color: white; }
+.shortcutPopover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  width: 230px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(24, 24, 27, 0.98);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+}
+.shortcutRow { display: flex; align-items: center; gap: 10px; padding: 5px 2px; color: #d4d4d8; font-size: 12px; }
+.shortcutRow kbd {
+  min-width: 44px;
+  padding: 2px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f4f4f5;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  text-align: center;
+}
 .button {
   min-height: 28px;
   display: inline-flex;
@@ -92,6 +133,7 @@ h1 span { color: #a1a1aa; font-family: ui-monospace, SFMono-Regular, Menlo, mono
   min-height: 0;
 }
 .treeHeader { display: flex; align-items: center; gap: 8px; padding: 8px 10px; color: #d4d4d8; font-size: 12px; }
+.treeShortcuts { margin-left: auto; color: #71717a; font-size: 11px; white-space: nowrap; }
 
 .commitList {
   flex: none;
