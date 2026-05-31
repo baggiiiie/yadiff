@@ -20,6 +20,7 @@ button, input { font: inherit; }
     "sidebar viewer";
   background: radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 32rem), #09090b;
 }
+.app:focus { outline: none; }
 
 .toolbar {
   grid-area: toolbar;

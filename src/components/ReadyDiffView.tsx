@@ -30,6 +30,7 @@ export function ReadyDiffView({ model }: { model: DiffViewerModel }) {
         setReviews,
         setShowBackgrounds,
         setShowShortcuts,
+        shortcutScopeRef,
         showBackgrounds,
         showShortcuts,
         toggleAllCollapsed,
@@ -40,7 +41,7 @@ export function ReadyDiffView({ model }: { model: DiffViewerModel }) {
 
     return (
         <WorkerPoolContextProvider poolOptions={DIFF_WORKER_POOL_OPTIONS} highlighterOptions={DIFF_HIGHLIGHTER_OPTIONS}>
-            <div className="app">
+            <div ref={shortcutScopeRef} className="app" tabIndex={-1}>
                 <Toolbar
                     allCollapsed={allCollapsed}
                     copyReviews={copyReviews}
