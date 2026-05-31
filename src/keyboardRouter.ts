@@ -8,11 +8,12 @@ interface KeyboardRouterState {
     treeSearchOpen: boolean;
 }
 
-interface KeyboardRouterActions {
+export interface KeyboardRouterActions {
     closeDraftReview: () => void;
     closeShortcutHelp: () => void;
     closeTreeSearch: () => void;
     copyReviews: () => void;
+    cycleTheme: () => void;
     focusNextFile: () => void;
     focusPreviousFile: () => void;
     openTreeSearch: () => void;
@@ -97,6 +98,9 @@ function routeAppShortcut(event: KeyboardEvent, options: KeyboardRouterOptions):
             break;
         case 'b':
             actions.toggleBackgrounds();
+            break;
+        case 'd':
+            actions.cycleTheme();
             break;
         case 'c':
             actions.toggleAllCollapsed();

@@ -3,6 +3,7 @@ import { CodeView } from '@pierre/diffs/react';
 import { REVIEW_UNSAFE_CSS } from '../constants';
 import { normalizeReviewSide } from '../format';
 import type { DiffViewerModel } from '../useDiffViewerModel';
+import { useThemeContext } from '../useTheme';
 import { DiffHeader } from './DiffHeader';
 import { DraftReviewBox, SavedReviewAnnotation } from './ReviewAnnotations';
 
@@ -39,6 +40,7 @@ export function DiffViewer({
     viewerRef,
     viewerScrollTopRef,
 }: DiffViewerProps) {
+    const { resolved: resolvedTheme } = useThemeContext();
     return (
         <main className="viewer">
             {parsed.codeViewItems.length === 0 ? (
@@ -55,6 +57,7 @@ export function DiffViewer({
                     options={{
                         diffStyle,
                         overflow,
+                        themeType: resolvedTheme,
                         disableLineNumbers: !lineNumbers,
                         disableBackground: !showBackgrounds,
                         diffIndicators: 'bars',

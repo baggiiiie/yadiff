@@ -16,7 +16,6 @@ import {
     formatStatusDetails,
     getLargeDiffLabel,
 } from './format';
-import { useKeyboardRouter } from './keyboardRouter';
 import type { DiffResponse, DiffStyle, DraftReview, LineReview, LoadState, Overflow, ReviewAnnotation } from './types';
 import { increment, modulo } from './utils';
 
@@ -259,12 +258,7 @@ export function useDiffViewerModel() {
             return;
         }
 
-        const targetLabel = response?.source === 'github'
-            ? `GitHub pull request "${response.target}"`
-            : response?.source === 'jj'
-                ? `jj revision "${response.target}"`
-                : `Git commit "${response?.target ?? 'unknown'}"`;
-        const header = `Below is my review for ${targetLabel}`;
+        const header = "Below is my review";
         const body = reviews
             .map((review, index) => `${index + 1}. ${review.path}:${review.lineNumber} (${formatReviewSide(review.side)})\n   ${review.body}`)
             .join('\n');
@@ -382,29 +376,27 @@ export function useDiffViewerModel() {
         return () => window.cancelAnimationFrame(frame);
     }, [parsed, scrollTrigger]);
 
-    useKeyboardRouter({
-        actions: {
-            closeDraftReview: () => setDraftReview(null),
-            closeShortcutHelp: () => setShowShortcuts(false),
-            closeTreeSearch: () => treeSearch.close(),
-            copyReviews: () => void copyReviews(),
-            focusNextFile: () => navigateFile(1),
-            focusPreviousFile: () => navigateFile(-1),
-            openTreeSearch: () => treeSearch.open(),
-            toggleAllCollapsed,
-            toggleBackgrounds: () => setShowBackgrounds((value) => !value),
-            toggleDiffStyle: () => setDiffStyle((value) => value === 'unified' ? 'split' : 'unified'),
-            toggleLineNumbers: () => setLineNumbers((value) => !value),
-            toggleOverflow: () => setOverflow((value) => value === 'wrap' ? 'scroll' : 'wrap'),
-            toggleShortcutHelp: () => setShowShortcuts((value) => !value),
-        },
-        shortcutScopeRef,
-        state: {
-            draftReviewOpen: draftReview != null,
-            shortcutHelpOpen: showShortcuts,
-            treeSearchOpen: treeSearch.isOpen,
-        },
-    });
+    const keyboardActions = {
+        closeDraftReview: () => setDraftReview(null),
+        closeShortcutHelp: () => setShowShortcuts(false),
+        closeTreeSearch: () => treeSearch.close(),
+        copyReviews: () => void copyReviews(),
+        focusNextFile: () => navigateFile(1),
+        focusPreviousFile: () => navigateFile(-1),
+        openTreeSearch: () => treeSearch.open(),
+        toggleAllCollapsed,
+        toggleBackgrounds: () => setShowBackgrounds((value) => !value),
+        toggleDiffStyle: () => setDiffStyle((value) => value === 'unified' ? 'split' : 'unified'),
+        toggleLineNumbers: () => setLineNumbers((value) => !value),
+        toggleOverflow: () => setOverflow((value) => value === 'wrap' ? 'scroll' : 'wrap'),
+        toggleShortcutHelp: () => setShowShortcuts((value) => !value),
+    };
+
+    const keyboardState = {
+        draftReviewOpen: draftReview != null,
+        shortcutHelpOpen: showShortcuts,
+        treeSearchOpen: treeSearch.isOpen,
+    };
 
     return {
         activeCommitId,
@@ -414,6 +406,8 @@ export function useDiffViewerModel() {
         diffStyle,
         draftReview,
         error,
+        keyboardActions,
+        keyboardState,
         largeDiffLabel,
         lineNumbers,
         loadingDetails,

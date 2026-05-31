@@ -13,7 +13,9 @@ export const DIFF_WORKER_POOL_OPTIONS = {
     workerFactory: () => new Worker(new URL('@pierre/diffs/worker/worker.js', import.meta.url), { type: 'module' }),
 };
 
-export const DIFF_HIGHLIGHTER_OPTIONS = {};
+export const DIFF_HIGHLIGHTER_OPTIONS = {
+    theme: { dark: 'pierre-dark', light: 'pierre-light' } as const,
+};
 
 export const SHORTCUTS: [string, string][] = [
     ['T', 'Tree search'],
@@ -21,6 +23,7 @@ export const SHORTCUTS: [string, string][] = [
     ['W', 'Line wrap'],
     ['L', 'Line numbers'],
     ['B', 'Backgrounds'],
+    ['D', 'Cycle theme (auto/light/dark)'],
     ['C', 'Collapse or expand all'],
     ['J / K', 'Next or previous file'],
     ['Y', 'Copy reviews'],
