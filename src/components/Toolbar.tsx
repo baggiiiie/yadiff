@@ -1,5 +1,6 @@
 import { formatSource } from '../format';
 import type { DiffViewerModel } from '../useDiffViewerModel';
+import { useThemeContext } from '../useTheme';
 import { PillButton } from './PillButton';
 import { ShortcutHelp } from './ShortcutHelp';
 
@@ -42,6 +43,8 @@ export function Toolbar({
     showShortcuts,
     toggleAllCollapsed,
 }: ToolbarProps) {
+    const theme = useThemeContext();
+    const themeLabel = theme.mode === 'auto' ? 'Auto' : theme.mode === 'light' ? 'Light' : 'Dark';
     return (
         <header className="toolbar">
             <div className="titleBlock">
@@ -82,6 +85,9 @@ export function Toolbar({
                 </PillButton>
                 <PillButton active={showBackgrounds} onClick={() => setShowBackgrounds((value) => !value)} title="Toggle background highlights (B)">
                     Background (B)
+                </PillButton>
+                <PillButton active={theme.mode !== 'auto'} onClick={theme.cycleTheme} title="Cycle theme: auto / light / dark (D)">
+                    {themeLabel} (D)
                 </PillButton>
                 <PillButton active={allCollapsed} onClick={toggleAllCollapsed} title={allCollapsed ? 'Expand all files (C)' : 'Collapse all files (C)'}>
                     {allCollapsed ? 'Expand (C)' : 'Collapse (C)'}
