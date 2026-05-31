@@ -16,3 +16,7 @@ export function isEditableShortcutTarget(target: EventTarget | null): boolean {
     }
     return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
 }
+
+export function hasEditableShortcutTarget(event: Event): boolean {
+    return isEditableShortcutTarget(event.target) || event.composedPath().some(isEditableShortcutTarget);
+}

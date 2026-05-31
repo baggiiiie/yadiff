@@ -35,3 +35,7 @@ _Avoid_: CodeView item id, parser index
 **Review**:
 A user-authored note attached to a line in a **Diff**. Saved Reviews are portable as path, side, and line number, while UI-local Review state may retain Projected File Identity to avoid ambiguous attachment.
 _Avoid_: comment (too broad), annotation (renderer mechanism)
+
+**Keyboard Router**:
+The browser-side module that decides whether a key event belongs to editable input, tree search, or yadiff app shortcuts. It routes commands and focus; it must not synthesize text input.
+_Avoid_: shortcut handler, keydown listener (when referring to the central routing seam)

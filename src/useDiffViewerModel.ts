@@ -1,6 +1,6 @@
 import type { CodeViewHandle } from '@pierre/diffs/react';
 import { useFileTree, useFileTreeSearch } from '@pierre/trees/react';
-import { useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
 import {
     createDiffProjection,
@@ -16,8 +16,9 @@ import {
     formatStatusDetails,
     getLargeDiffLabel,
 } from './format';
+import { useKeyboardRouter } from './keyboardRouter';
 import type { DiffResponse, DiffStyle, DraftReview, LineReview, LoadState, Overflow, ReviewAnnotation } from './types';
-import { increment, isEditableShortcutTarget, modulo } from './utils';
+import { increment, modulo } from './utils';
 
 function useAppState() {
     const [loadState, setLoadState] = useState<LoadState>('loading');
@@ -121,6 +122,7 @@ export function useDiffViewerModel() {
         showShortcuts,
     } = useAppState();
     const pendingTreeScrollFileIdRef = useRef<ProjectedFileIdentity | null>(null);
+    const shortcutScopeRef = useRef<HTMLDivElement>(null);
     const viewerScrollTopRef = useRef(0);
     const activeFileIndexRef = useRef(0);
     const [scrollTrigger, triggerScroll] = useReducer(increment, 0);
@@ -380,73 +382,29 @@ export function useDiffViewerModel() {
         return () => window.cancelAnimationFrame(frame);
     }, [parsed, scrollTrigger]);
 
-    const handleWindowKeyDown = useEffectEvent((event: KeyboardEvent) => {
-        if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
-            return;
-        }
-
-        const key = event.key.toLowerCase();
-        if (key !== 'escape' && isEditableShortcutTarget(event.target)) {
-            return;
-        }
-
-        let handled = true;
-        switch (key) {
-            case 't':
-                treeSearch.open();
-                break;
-            case 'u':
-                setDiffStyle((value) => value === 'unified' ? 'split' : 'unified');
-                break;
-            case 'w':
-                setOverflow((value) => value === 'wrap' ? 'scroll' : 'wrap');
-                break;
-            case 'l':
-                setLineNumbers((value) => !value);
-                break;
-            case 'b':
-                setShowBackgrounds((value) => !value);
-                break;
-            case 'c':
-                toggleAllCollapsed();
-                break;
-            case 'j':
-                navigateFile(1);
-                break;
-            case 'k':
-                navigateFile(-1);
-                break;
-            case 'y':
-                void copyReviews();
-                break;
-            case '?':
-                setShowShortcuts((value) => !value);
-                break;
-            case 'escape':
-                if (showShortcuts) {
-                    setShowShortcuts(false);
-                } else if (draftReview != null) {
-                    setDraftReview(null);
-                } else if (treeSearch.isOpen) {
-                    treeSearch.close();
-                } else {
-                    handled = false;
-                }
-                break;
-            default:
-                handled = false;
-        }
-
-        if (handled) {
-            event.preventDefault();
-        }
+    useKeyboardRouter({
+        actions: {
+            closeDraftReview: () => setDraftReview(null),
+            closeShortcutHelp: () => setShowShortcuts(false),
+            closeTreeSearch: () => treeSearch.close(),
+            copyReviews: () => void copyReviews(),
+            focusNextFile: () => navigateFile(1),
+            focusPreviousFile: () => navigateFile(-1),
+            openTreeSearch: () => treeSearch.open(),
+            toggleAllCollapsed,
+            toggleBackgrounds: () => setShowBackgrounds((value) => !value),
+            toggleDiffStyle: () => setDiffStyle((value) => value === 'unified' ? 'split' : 'unified'),
+            toggleLineNumbers: () => setLineNumbers((value) => !value),
+            toggleOverflow: () => setOverflow((value) => value === 'wrap' ? 'scroll' : 'wrap'),
+            toggleShortcutHelp: () => setShowShortcuts((value) => !value),
+        },
+        shortcutScopeRef,
+        state: {
+            draftReviewOpen: draftReview != null,
+            shortcutHelpOpen: showShortcuts,
+            treeSearchOpen: treeSearch.isOpen,
+        },
     });
-
-    useEffect(() => {
-        const onKeyDown = (event: KeyboardEvent) => handleWindowKeyDown(event);
-        window.addEventListener('keydown', onKeyDown);
-        return () => window.removeEventListener('keydown', onKeyDown);
-    }, []);
 
     return {
         activeCommitId,
@@ -476,6 +434,7 @@ export function useDiffViewerModel() {
         setReviews,
         setShowBackgrounds,
         setShowShortcuts,
+        shortcutScopeRef,
         showBackgrounds,
         showShortcuts,
         toggleAllCollapsed,
