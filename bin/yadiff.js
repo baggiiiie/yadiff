@@ -11,6 +11,8 @@ import { createTarget } from '../lib/target/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
+const BACKGROUND_SERVER_ENV = 'YADIFF_BACKGROUND_SERVER';
+const SERVER_IDLE_TIMEOUT_MS = 60_000;
 
 function printUsage() {
   console.log(`Usage: yadiff <git-ref-or-range-or-jj-revset-or-github-pr-url> [options]
@@ -39,7 +41,8 @@ Options:
   --jj               Shortcut for --vcs jj
   --port <number>   Port to listen on (default: 5177)
   --host <host>     Host to bind (default: 127.0.0.1)
-  --no-open         Do not open the browser automatically
+  --foreground      Keep the local server attached to this terminal
+  --verbose         Print server/source details while running
   --dev             Use Vite dev server (for development only)
   -h, --help        Show this help
 `);
@@ -52,9 +55,10 @@ function parseArgs(argv) {
     repo: process.cwd(),
     port: 5177,
     host: '127.0.0.1',
-    open: true,
     vcs: 'auto',
     dev: false,
+    foreground: false,
+    verbose: false,
   };
 
   for (let index = 0; index < argv.length; index++) {
@@ -79,8 +83,10 @@ function parseArgs(argv) {
       args.vcs = 'git';
     } else if (arg === '--jj') {
       args.vcs = 'jj';
-    } else if (arg === '--no-open') {
-      args.open = false;
+    } else if (arg === '--foreground') {
+      args.foreground = true;
+    } else if (arg === '--verbose') {
+      args.verbose = true;
     } else if (arg === '--dev') {
       args.dev = true;
     } else if (arg?.startsWith('--')) {
@@ -124,11 +130,116 @@ function getDisplayTarget(args) {
   return args.target;
 }
 
-async function attachViteDevMiddleware(app) {
+function isBackgroundServerProcess() {
+  return process.env[BACKGROUND_SERVER_ENV] === '1';
+}
+
+function shouldLaunchBackgroundServer(args) {
+  return !args.dev && !args.foreground && !args.verbose && !isBackgroundServerProcess();
+}
+
+async function launchBackgroundServer(argv) {
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...argv], {
+    detached: true,
+    stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+    env: {
+      ...process.env,
+      [BACKGROUND_SERVER_ENV]: '1',
+    },
+    windowsHide: true,
+  });
+  child.unref();
+
+  const { url, opened } = await waitForBackgroundServer(child);
+  if (child.connected) {
+    child.disconnect();
+  }
+
+  if (!opened) {
+    console.error(`yadiff: could not open the browser automatically; visit ${url}`);
+  }
+}
+
+function waitForBackgroundServer(child) {
+  return new Promise((resolveReady, rejectReady) => {
+    let settled = false;
+    const startupTimer = setTimeout(() => {
+      settle(() => {
+        child.kill();
+        rejectReady(new Error('Timed out starting yadiff background server.'));
+      });
+    }, 15_000);
+
+    function settle(complete) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(startupTimer);
+      child.off('message', onMessage);
+      child.off('error', onError);
+      child.off('exit', onExit);
+      complete();
+    }
+
+    function onMessage(message) {
+      if (message?.type === 'ready' && typeof message.url === 'string') {
+        settle(() => resolveReady({ url: message.url, opened: message.opened !== false }));
+      } else if (message?.type === 'error') {
+        settle(() => rejectReady(new Error(String(message.error ?? 'Could not start yadiff background server.'))));
+      }
+    }
+
+    function onError(error) {
+      settle(() => rejectReady(error));
+    }
+
+    function onExit(code, signal) {
+      settle(() => rejectReady(new Error(`yadiff background server exited before it was ready (${signal ?? code ?? 'unknown'}).`)));
+    }
+
+    child.on('message', onMessage);
+    child.on('error', onError);
+    child.on('exit', onExit);
+  });
+}
+
+function notifyParent(message) {
+  if (typeof process.send !== 'function') return false;
+  try {
+    process.send(message);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function openBrowser(url) {
+  return new Promise((resolveOpen) => {
+    const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
+    const openerArgs = process.platform === 'win32' ? ['/c', 'start', url] : [url];
+    const child = spawn(opener, openerArgs, { detached: true, stdio: 'ignore', windowsHide: true });
+    let settled = false;
+    let fallbackTimer;
+
+    function settle(opened) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(fallbackTimer);
+      resolveOpen(opened);
+    }
+
+    fallbackTimer = setTimeout(() => settle(true), 1500);
+    child.on('error', () => settle(false));
+    child.on('exit', (code) => settle(code === 0));
+    child.unref();
+  });
+}
+
+async function attachViteDevMiddleware(app, verbose) {
   const { createServer: createViteServer } = await import('vite');
   const vite = await createViteServer({
     root: projectRoot,
     appType: 'spa',
+    logLevel: verbose ? 'info' : 'error',
     server: { middlewareMode: true },
   });
   app.use(vite.middlewares);
@@ -149,7 +260,8 @@ function attachStaticMiddleware(app) {
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const args = parseArgs(argv);
   if (args.help) {
     printUsage();
     return;
@@ -160,28 +272,40 @@ async function main() {
     return;
   }
 
+  if (shouldLaunchBackgroundServer(args)) {
+    await launchBackgroundServer(argv);
+    return;
+  }
+
+  await runServer(args);
+}
+
+async function runServer(args) {
   const target = createTarget(args);
   const displayTarget = target.target ?? getDisplayTarget(args);
   const repositoryName = target.repositoryName ?? target.repoRoot.split('/').filter(Boolean).at(-1) ?? target.repoRoot;
 
   const app = express();
+  const backgroundServer = isBackgroundServerProcess();
   let activeBrowserSessions = 0;
-  let browserShutdownTimer = null;
+  let idleShutdownTimer = null;
 
-  function cancelBrowserShutdown() {
-    if (browserShutdownTimer == null) return;
-    clearTimeout(browserShutdownTimer);
-    browserShutdownTimer = null;
+  function cancelIdleShutdown() {
+    if (idleShutdownTimer == null) return;
+    clearTimeout(idleShutdownTimer);
+    idleShutdownTimer = null;
   }
 
-  function scheduleBrowserShutdown() {
-    if (browserShutdownTimer != null || activeBrowserSessions > 0) return;
+  function scheduleIdleShutdown() {
+    if (idleShutdownTimer != null || activeBrowserSessions > 0) return;
 
-    browserShutdownTimer = setTimeout(() => {
-      browserShutdownTimer = null;
+    idleShutdownTimer = setTimeout(() => {
+      idleShutdownTimer = null;
       if (activeBrowserSessions > 0) return;
 
-      console.log('yadiff: browser session closed, shutting down server...');
+      if (args.verbose) {
+        console.log('yadiff: no active browser sessions, shutting down server...');
+      }
       server.close((error) => {
         if (error) {
           console.error(error instanceof Error ? error.message : String(error));
@@ -190,13 +314,13 @@ async function main() {
         process.exit(0);
       });
       server.closeIdleConnections?.();
-    }, 2000);
-    browserShutdownTimer.unref?.();
+    }, SERVER_IDLE_TIMEOUT_MS);
+    idleShutdownTimer.unref?.();
   }
 
   app.get('/api/session', (req, res) => {
     activeBrowserSessions += 1;
-    cancelBrowserShutdown();
+    cancelIdleShutdown();
 
     req.socket.setTimeout(0);
     res.set({
@@ -221,7 +345,7 @@ async function main() {
       clearInterval(heartbeat);
       activeBrowserSessions = Math.max(0, activeBrowserSessions - 1);
       if (activeBrowserSessions === 0) {
-        scheduleBrowserShutdown();
+        scheduleIdleShutdown();
       }
     });
   });
@@ -281,43 +405,53 @@ async function main() {
   });
 
   if (args.dev) {
-    await attachViteDevMiddleware(app);
+    await attachViteDevMiddleware(app, args.verbose);
   } else {
     attachStaticMiddleware(app);
   }
 
   const server = createServer(app);
-  const boundPort = await listenWithFallback(server, args.port, args.host, args.portExplicit);
+  const boundPort = await listenWithFallback(server, args.port, args.host, args.portExplicit, args.verbose);
   const url = `http://${args.host}:${boundPort}/`;
-  console.log(`yadiff: ${url}`);
+
+  if (args.verbose) {
+    console.log(`yadiff: ${url}`);
+  }
   if (target.source === 'github') {
-    console.log(`Fetching GitHub PR diff: ${displayTarget}`);
+    if (args.verbose) {
+      console.log(`Fetching GitHub PR diff: ${displayTarget}`);
+    }
     target.getPatch()
-      .then((patch) => console.log(`Fetched ${formatBytes(Buffer.byteLength(patch))} from GitHub.`))
+      .then((patch) => {
+        if (args.verbose) {
+          console.log(`Fetched ${formatBytes(Buffer.byteLength(patch))} from GitHub.`);
+        }
+      })
       .catch((error) => console.error(error instanceof Error ? error.message : String(error)));
   }
-  console.log(`Repo: ${repositoryName}`);
-  console.log(`Source: ${formatSource(target.source)}`);
-  console.log(`Target: ${displayTarget}`);
-
-  if (args.open) {
-    const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
-    const openerArgs = process.platform === 'win32' ? ['/c', 'start', url] : [url];
-    const child = spawn(opener, openerArgs, { detached: true, stdio: 'ignore' });
-    // Swallow ENOENT etc. so a missing opener (e.g. xdg-open on a minimal
-    // Linux/WSL system) does not crash the server. The user can still visit
-    // the URL printed above or pass --no-open.
-    child.on('error', () => {});
-    child.unref();
+  if (args.verbose) {
+    console.log(`Repo: ${repositoryName}`);
+    console.log(`Source: ${formatSource(target.source)}`);
+    console.log(`Target: ${displayTarget}`);
   }
+
+  const opened = await openBrowser(url);
+  if (backgroundServer) {
+    notifyParent({ type: 'ready', url, opened });
+  } else if (!opened) {
+    console.error(`yadiff: could not open the browser automatically; visit ${url}`);
+  }
+  scheduleIdleShutdown();
 }
 
-function listenWithFallback(server, preferredPort, host, portExplicit) {
+function listenWithFallback(server, preferredPort, host, portExplicit, verbose) {
   return new Promise((resolveListen, rejectListen) => {
     const onError = (err) => {
       if (err && err.code === 'EADDRINUSE' && !portExplicit) {
         server.removeListener('error', onError);
-        console.warn(`yadiff: port ${preferredPort} is busy, picking a free one...`);
+        if (verbose) {
+          console.warn(`yadiff: port ${preferredPort} is busy, picking a free one...`);
+        }
         server.listen(0, host, () => {
           const addr = server.address();
           resolveListen(addr && typeof addr === 'object' ? addr.port : preferredPort);
@@ -350,6 +484,11 @@ function formatBytes(bytes) {
 }
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
+  const message = error instanceof Error ? error.message : String(error);
+  if (isBackgroundServerProcess()) {
+    notifyParent({ type: 'error', error: message });
+  } else {
+    console.error(message);
+  }
   process.exit(1);
 });
