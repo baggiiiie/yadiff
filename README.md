@@ -23,7 +23,9 @@ npm install -g yadiff
 yadiff HEAD
 ```
 
-The command starts a local server, opens the browser, acquires a diff from the selected source, and serves the patch to the browser. Closing all yadiff browser tabs closes the local server after a short grace period.
+The command starts a local server in the background, opens the browser, acquires a diff from the selected source, and serves the patch to the browser. The shell command exits after launch. When there are no browser sessions for one minute, the local server exits automatically.
+
+Use `--foreground` to keep the server attached to the current terminal.
 
 ### Examples:
 
