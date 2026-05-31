@@ -1,7 +1,7 @@
 import type { AnnotationSide } from '@pierre/diffs';
 import { CodeView, type CodeViewHandle, WorkerPoolContextProvider } from '@pierre/diffs/react';
 import { FileTree, useFileTree, useFileTreeSearch } from '@pierre/trees/react';
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef, useState } from 'react';
 
 import {
     createDiffProjection,
@@ -85,8 +85,19 @@ const DIFF_WORKER_POOL_OPTIONS = {
     workerFactory: () => new Worker(new URL('@pierre/diffs/worker/worker.js', import.meta.url), { type: 'module' }),
 };
 const DIFF_HIGHLIGHTER_OPTIONS = {};
+const SHORTCUTS: [string, string][] = [
+    ['T', 'Tree search'],
+    ['U', 'Unified diff'],
+    ['W', 'Line wrap'],
+    ['L', 'Line numbers'],
+    ['B', 'Backgrounds'],
+    ['C', 'Collapse or expand all'],
+    ['J / K', 'Next or previous file'],
+    ['Y', 'Copy reviews'],
+    ['Esc', 'Dismiss search or draft review'],
+];
 
-export function App() {
+function useAppState() {
     const [loadState, setLoadState] = useState<LoadState>('loading');
     const [loadingMessage, setLoadingMessage] = useState('Fetching diff from local repository…');
     const [loadingDetails, setLoadingDetails] = useState<string | null>(null);
@@ -101,17 +112,99 @@ export function App() {
     const [showBackgrounds, setShowBackgrounds] = useState(true);
     const [lineNumbers, setLineNumbers] = useState(true);
     const [collapsedIds, setCollapsedIds] = useState<Set<ProjectedFileIdentity>>(() => new Set());
-    const pendingTreeScrollFileIdRef = useRef<ProjectedFileIdentity | null>(null);
-    const viewerScrollTopRef = useRef(0);
-    const activeFileIndexRef = useRef(0);
-    const [scrollTrigger, setScrollTrigger] = useState(0);
     const [reviews, setReviews] = useState<LineReview[]>([]);
     const [draftReview, setDraftReview] = useState<DraftReview | null>(null);
     const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'empty' | 'error'>('idle');
     const [showShortcuts, setShowShortcuts] = useState(false);
     const [activeCommitId, setActiveCommitId] = useState<string | null>(null);
     const [commitPatch, setCommitPatch] = useState<string | null>(null);
+
+    return {
+        activeCommitId,
+        collapsedIds,
+        commitPatch,
+        copyStatus,
+        diffStyle,
+        draftReview,
+        error,
+        lineNumbers,
+        loadedPatchBytes,
+        loadingDetails,
+        loadingMessage,
+        loadState,
+        overflow,
+        patch,
+        response,
+        reviews,
+        setActiveCommitId,
+        setCollapsedIds,
+        setCommitPatch,
+        setCopyStatus,
+        setDiffStyle,
+        setDraftReview,
+        setError,
+        setLineNumbers,
+        setLoadedPatchBytes,
+        setLoadingDetails,
+        setLoadingMessage,
+        setLoadState,
+        setOverflow,
+        setPatch,
+        setResponse,
+        setReviews,
+        setShowBackgrounds,
+        setShowShortcuts,
+        showBackgrounds,
+        showShortcuts,
+    };
+}
+
+function useAppModel() {
+    const {
+        activeCommitId,
+        collapsedIds,
+        commitPatch,
+        copyStatus,
+        diffStyle,
+        draftReview,
+        error,
+        lineNumbers,
+        loadedPatchBytes,
+        loadingDetails,
+        loadingMessage,
+        loadState,
+        overflow,
+        patch,
+        response,
+        reviews,
+        setActiveCommitId,
+        setCollapsedIds,
+        setCommitPatch,
+        setCopyStatus,
+        setDiffStyle,
+        setDraftReview,
+        setError,
+        setLineNumbers,
+        setLoadedPatchBytes,
+        setLoadingDetails,
+        setLoadingMessage,
+        setLoadState,
+        setOverflow,
+        setPatch,
+        setResponse,
+        setReviews,
+        setShowBackgrounds,
+        setShowShortcuts,
+        showBackgrounds,
+        showShortcuts,
+    } = useAppState();
+    const pendingTreeScrollFileIdRef = useRef<ProjectedFileIdentity | null>(null);
+    const viewerScrollTopRef = useRef(0);
+    const activeFileIndexRef = useRef(0);
+    const [scrollTrigger, triggerScroll] = useReducer(increment, 0);
     const viewerRef = useRef<CodeViewHandle<ReviewAnnotation>>(null);
+    const nextReviewIdRef = useRef(0);
+    const commitRequestIdRef = useRef(0);
     const onTreeSelectionRef = useRef<(paths: readonly string[]) => void>(() => undefined);
     const { model: treeModel } = useFileTree({
         paths: [],
@@ -149,6 +242,10 @@ export function App() {
                 });
                 if (cancelled) return;
 
+                commitRequestIdRef.current += 1;
+                setCopyStatus('idle');
+                setActiveCommitId(null);
+                setCommitPatch(null);
                 setResponse(metadata);
                 setLoadingMessage('Loading diff into browser…');
                 setLoadingDetails(metadata.patchBytes != null ? `Diff size: ${formatBytes(metadata.patchBytes)}` : null);
@@ -173,44 +270,44 @@ export function App() {
         return () => {
             cancelled = true;
         };
-    }, []);
+    }, [
+        setActiveCommitId,
+        setCommitPatch,
+        setCopyStatus,
+        setError,
+        setLoadedPatchBytes,
+        setLoadingDetails,
+        setLoadingMessage,
+        setLoadState,
+        setPatch,
+        setResponse,
+    ]);
 
-    useEffect(() => {
-        setCopyStatus('idle');
-        setActiveCommitId(null);
-        setCommitPatch(null);
-    }, [response?.target]);
-
-    useEffect(() => {
+    const selectCommit = useCallback((commitId: string | null) => {
+        const requestId = commitRequestIdRef.current + 1;
+        commitRequestIdRef.current = requestId;
+        setActiveCommitId(commitId);
         setCollapsedIds(new Set());
         setReviews([]);
         setDraftReview(null);
+        setCopyStatus('idle');
 
-        if (activeCommitId == null) {
+        if (commitId == null) {
             setCommitPatch(null);
             return;
         }
-        let cancelled = false;
-        const commitId = activeCommitId;
-        async function fetchCommitPatch() {
-            try {
-                const result = await fetch(`/api/diff/${encodeURIComponent(commitId)}`, { cache: 'no-store' });
-                const data = await result.json();
-                if (!result.ok) {
-                    throw new Error(data.error ?? `Request failed (${result.status})`);
-                }
-                if (!cancelled) {
-                    setCommitPatch(data.patch);
-                }
-            } catch {
-                if (!cancelled) {
-                    setCommitPatch(null);
-                }
+
+        setCommitPatch(null);
+        void fetchCommitPatchText(commitId).then((nextPatch) => {
+            if (commitRequestIdRef.current === requestId) {
+                setCommitPatch(nextPatch);
             }
-        }
-        void fetchCommitPatch();
-        return () => { cancelled = true; };
-    }, [activeCommitId]);
+        }, () => {
+            if (commitRequestIdRef.current === requestId) {
+                setCommitPatch(null);
+            }
+        });
+    }, [setActiveCommitId, setCollapsedIds, setCommitPatch, setCopyStatus, setDraftReview, setReviews]);
 
     const activePatch = activeCommitId != null ? (commitPatch ?? '') : patch;
     const diffKey = response == null ? 'empty' : activeCommitId ?? response.target;
@@ -223,16 +320,16 @@ export function App() {
     }), [collapsedIds, draftReview, parsedPatches, reviews]);
 
     const allCollapsed = parsed.files.length > 0 && parsed.files.every((file) => collapsedIds.has(file.id));
-    const toggleAllCollapsed = () => {
+    const toggleAllCollapsed = useCallback(() => {
         setCollapsedIds(allCollapsed ? new Set() : new Set(parsed.files.map((file) => file.id)));
-    };
+    }, [allCollapsed, parsed.files, setCollapsedIds]);
 
-    const showCopyStatus = (status: 'copied' | 'empty' | 'error') => {
+    const showCopyStatus = useCallback((status: 'copied' | 'empty' | 'error') => {
         setCopyStatus(status);
         window.setTimeout(() => setCopyStatus('idle'), status === 'error' ? 2000 : 1500);
-    };
+    }, [setCopyStatus]);
 
-    const copyReviews = async () => {
+    const copyReviews = useCallback(async () => {
         if (reviews.length === 0) {
             showCopyStatus('empty');
             return;
@@ -254,19 +351,19 @@ export function App() {
         } catch {
             showCopyStatus('error');
         }
-    };
+    }, [response?.source, response?.target, reviews, showCopyStatus]);
 
     const reviewButtonLabel = copyStatus === 'idle' ? `${reviews.length} Reviews (Y)` : formatCopyStatus(copyStatus);
     const effectivePatchBytes = loadedPatchBytes ?? response?.patchBytes;
     const largeDiffLabel = getLargeDiffLabel(response?.source, effectivePatchBytes, parsed.stats.files);
 
-    const scrollToFile = (fileId: ProjectedFileIdentity) => {
+    const scrollToFile = useCallback((fileId: ProjectedFileIdentity) => {
         const nextIndex = parsed.files.findIndex((file) => file.id === fileId);
         if (nextIndex >= 0) {
             activeFileIndexRef.current = nextIndex;
         }
         pendingTreeScrollFileIdRef.current = fileId;
-        setScrollTrigger((c) => c + 1);
+        triggerScroll();
         setCollapsedIds((current) => {
             if (!current.has(fileId)) {
                 return current;
@@ -275,9 +372,9 @@ export function App() {
             next.delete(fileId);
             return next;
         });
-    };
+    }, [parsed.files, setCollapsedIds]);
 
-    const getCurrentFileIndex = () => {
+    const getCurrentFileIndex = useCallback(() => {
         if (parsed.files.length === 0) {
             return 0;
         }
@@ -305,16 +402,16 @@ export function App() {
         }
         activeFileIndexRef.current = currentIndex;
         return currentIndex;
-    };
+    }, [parsed]);
 
-    const navigateFile = (direction: -1 | 1) => {
+    const navigateFile = useCallback((direction: -1 | 1) => {
         if (parsed.files.length === 0) {
             return;
         }
         const currentIndex = getCurrentFileIndex();
         const nextIndex = modulo(currentIndex + direction, parsed.files.length);
         scrollToFile(parsed.files[nextIndex].id);
-    };
+    }, [getCurrentFileIndex, parsed.files, scrollToFile]);
 
     useEffect(() => {
         treeModel.resetPaths(parsed.paths);
@@ -333,7 +430,7 @@ export function App() {
             }
             scrollToFile(fileId);
         };
-    }, [parsed]);
+    }, [parsed, scrollToFile]);
 
     useEffect(() => {
         const fileId = pendingTreeScrollFileIdRef.current;
@@ -361,80 +458,157 @@ export function App() {
         return () => window.cancelAnimationFrame(frame);
     }, [parsed, scrollTrigger]);
 
-    useEffect(() => {
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
-                return;
-            }
+    const handleWindowKeyDown = useEffectEvent((event: KeyboardEvent) => {
+        if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
+            return;
+        }
 
-            const key = event.key.toLowerCase();
-            if (key !== 'escape' && isEditableShortcutTarget(event.target)) {
-                return;
-            }
+        const key = event.key.toLowerCase();
+        if (key !== 'escape' && isEditableShortcutTarget(event.target)) {
+            return;
+        }
 
-            let handled = true;
-            switch (key) {
-                case 't':
-                    treeSearch.open();
-                    break;
-                case 'u':
-                    setDiffStyle((value) => value === 'unified' ? 'split' : 'unified');
-                    break;
-                case 'w':
-                    setOverflow((value) => value === 'wrap' ? 'scroll' : 'wrap');
-                    break;
-                case 'l':
-                    setLineNumbers((value) => !value);
-                    break;
-                case 'b':
-                    setShowBackgrounds((value) => !value);
-                    break;
-                case 'c':
-                    toggleAllCollapsed();
-                    break;
-                case 'j':
-                    navigateFile(1);
-                    break;
-                case 'k':
-                    navigateFile(-1);
-                    break;
-                case 'y':
-                    void copyReviews();
-                    break;
-                case '?':
-                    setShowShortcuts((value) => !value);
-                    break;
-                case 'escape':
-                    if (showShortcuts) {
-                        setShowShortcuts(false);
-                    } else if (draftReview != null) {
-                        setDraftReview(null);
-                    } else if (treeSearch.isOpen) {
-                        treeSearch.close();
-                    } else {
-                        handled = false;
-                    }
-                    break;
-                default:
+        let handled = true;
+        switch (key) {
+            case 't':
+                treeSearch.open();
+                break;
+            case 'u':
+                setDiffStyle((value) => value === 'unified' ? 'split' : 'unified');
+                break;
+            case 'w':
+                setOverflow((value) => value === 'wrap' ? 'scroll' : 'wrap');
+                break;
+            case 'l':
+                setLineNumbers((value) => !value);
+                break;
+            case 'b':
+                setShowBackgrounds((value) => !value);
+                break;
+            case 'c':
+                toggleAllCollapsed();
+                break;
+            case 'j':
+                navigateFile(1);
+                break;
+            case 'k':
+                navigateFile(-1);
+                break;
+            case 'y':
+                void copyReviews();
+                break;
+            case '?':
+                setShowShortcuts((value) => !value);
+                break;
+            case 'escape':
+                if (showShortcuts) {
+                    setShowShortcuts(false);
+                } else if (draftReview != null) {
+                    setDraftReview(null);
+                } else if (treeSearch.isOpen) {
+                    treeSearch.close();
+                } else {
                     handled = false;
-            }
+                }
+                break;
+            default:
+                handled = false;
+        }
 
-            if (handled) {
-                event.preventDefault();
-            }
-        };
+        if (handled) {
+            event.preventDefault();
+        }
+    });
 
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => handleWindowKeyDown(event);
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [copyReviews, draftReview, navigateFile, showShortcuts, toggleAllCollapsed, treeSearch]);
+    }, []);
 
-    if (loadState === 'loading') {
-        return <Shell message={loadingMessage} details={loadingDetails ?? undefined} />;
+    return {
+        activeCommitId,
+        allCollapsed,
+        copyReviews,
+        copyStatus,
+        diffStyle,
+        draftReview,
+        error,
+        largeDiffLabel,
+        lineNumbers,
+        loadingDetails,
+        loadingMessage,
+        loadState,
+        nextReviewIdRef,
+        overflow,
+        parsed,
+        response,
+        reviewButtonLabel,
+        selectCommit,
+        setCollapsedIds,
+        setCopyStatus,
+        setDiffStyle,
+        setDraftReview,
+        setLineNumbers,
+        setOverflow,
+        setReviews,
+        setShowBackgrounds,
+        setShowShortcuts,
+        showBackgrounds,
+        showShortcuts,
+        toggleAllCollapsed,
+        treeModel,
+        viewerRef,
+        viewerScrollTopRef,
+    };
+}
+
+export function App() {
+    const model = useAppModel();
+
+    if (model.loadState === 'loading') {
+        return <Shell message={model.loadingMessage} details={model.loadingDetails ?? undefined} />;
     }
 
-    if (loadState === 'error') {
-        return <Shell message="Could not render this diff" details={error ?? undefined} />;
+    if (model.loadState === 'error') {
+        return <Shell message="Could not render this diff" details={model.error ?? undefined} />;
     }
+
+    return <ReadyDiffView model={model} />;
+}
+
+function ReadyDiffView({ model }: { model: ReturnType<typeof useAppModel> }) {
+    const {
+        activeCommitId,
+        allCollapsed,
+        copyReviews,
+        copyStatus,
+        diffStyle,
+        draftReview,
+        largeDiffLabel,
+        lineNumbers,
+        nextReviewIdRef,
+        overflow,
+        parsed,
+        response,
+        reviewButtonLabel,
+        selectCommit,
+        setCollapsedIds,
+        setCopyStatus,
+        setDiffStyle,
+        setDraftReview,
+        setLineNumbers,
+        setOverflow,
+        setReviews,
+        setShowBackgrounds,
+        setShowShortcuts,
+        showBackgrounds,
+        showShortcuts,
+        toggleAllCollapsed,
+        treeModel,
+        viewerRef,
+        viewerScrollTopRef,
+    } = model;
 
     return (
         <WorkerPoolContextProvider poolOptions={DIFF_WORKER_POOL_OPTIONS} highlighterOptions={DIFF_HIGHLIGHTER_OPTIONS}>
@@ -482,7 +656,7 @@ export function App() {
                         <PillButton active={allCollapsed} onClick={toggleAllCollapsed} title={allCollapsed ? 'Expand all files (C)' : 'Collapse all files (C)'}>
                             {allCollapsed ? 'Expand (C)' : 'Collapse (C)'}
                         </PillButton>
-                        <button className={copyStatus === 'idle' ? 'button' : `button status-${copyStatus}`} onClick={copyReviews} title="Copy reviews (Y)">
+                        <button type="button" className={copyStatus === 'idle' ? 'button' : `button status-${copyStatus}`} onClick={copyReviews} title="Copy reviews (Y)">
                             {reviewButtonLabel}
                         </button>
                         <a className="button" href="/api/raw.diff" target="_blank" rel="noreferrer">Raw</a>
@@ -494,7 +668,7 @@ export function App() {
                         <CommitList
                             commits={response.commits}
                             activeCommitId={activeCommitId}
-                            onSelect={setActiveCommitId}
+                            onSelect={selectCommit}
                         />
                     )}
                     <FileTree
@@ -574,7 +748,7 @@ export function App() {
                                                     ...current,
                                                     {
                                                         kind: 'saved',
-                                                        id: `${review.fileId}:${review.side}:${review.lineNumber}:${Date.now()}`,
+                                                        id: `${review.fileId}:${review.side}:${review.lineNumber}:${nextReviewIdRef.current++}`,
                                                         fileId: review.fileId,
                                                         path: review.path,
                                                         lineNumber: review.lineNumber,
@@ -644,8 +818,18 @@ async function fetchDiffMetadata(onStatus: (status: DiffStatusResponse) => void)
     return data as DiffResponse;
 }
 
+async function fetchCommitPatchText(commitId: string): Promise<string> {
+    const result = await fetch(`/api/diff/${encodeURIComponent(commitId)}`, { cache: 'no-store' });
+    const data = await result.json();
+    if (!result.ok) {
+        throw new Error(data.error ?? `Request failed (${result.status})`);
+    }
+    return data.patch;
+}
+
 async function pollUntilReady(onStatus: (status: DiffStatusResponse) => void): Promise<void> {
     while (true) {
+        // oxlint-disable-next-line react-doctor/async-await-in-loop -- Polling must wait between status checks and stop once the server reports ready.
         await delay(500);
         const result = await fetch('/api/diff/status', { cache: 'no-store' });
         const data = (await result.json()) as DiffStatusResponse;
@@ -679,6 +863,7 @@ async function fetchPatchText(url: string, onProgress: (downloaded: number, tota
     const chunks: string[] = [];
     let downloaded = 0;
     while (true) {
+        // oxlint-disable-next-line react-doctor/async-await-in-loop -- ReadableStream chunks must be consumed sequentially from a single reader.
         const { done, value } = await reader.read();
         if (done) break;
         if (value == null) continue;
@@ -688,6 +873,10 @@ async function fetchPatchText(url: string, onProgress: (downloaded: number, tota
     }
     chunks.push(decoder.decode());
     return chunks.join('');
+}
+
+function increment(value: number): number {
+    return value + 1;
 }
 
 function delay(ms: number): Promise<void> {
@@ -766,11 +955,18 @@ function DraftReviewBox({
     onChange: (body: string) => void;
     onSave: () => void;
 }) {
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    useEffect(() => {
+        textareaRef.current?.focus();
+    }, []);
+
     return (
         <div className="reviewAnnotation reviewDraft">
             <div className="reviewAnnotationMeta">{draft.path}:{draft.lineNumber} ({formatReviewSide(draft.side)})</div>
             <textarea
-                autoFocus
+                ref={textareaRef}
+                aria-label="Review comment"
                 className="reviewTextarea"
                 placeholder="Leave a review comment"
                 value={draft.body}
@@ -888,27 +1084,15 @@ function TreeHeader({ stats }: { stats: FileStats }) {
 }
 
 function ShortcutHelp() {
-    const shortcuts = [
-        ['T', 'Tree search'],
-        ['U', 'Unified diff'],
-        ['W', 'Line wrap'],
-        ['L', 'Line numbers'],
-        ['B', 'Backgrounds'],
-        ['C', 'Collapse or expand all'],
-        ['J / K', 'Next or previous file'],
-        ['Y', 'Copy reviews'],
-        ['Esc', 'Dismiss search or draft review'],
-    ];
-
     return (
-        <div className="shortcutPopover" role="dialog" aria-label="Keyboard shortcuts">
-            {shortcuts.map(([key, label]) => (
+        <section className="shortcutPopover" aria-label="Keyboard shortcuts">
+            {SHORTCUTS.map(([key, label]) => (
                 <div className="shortcutRow" key={key}>
                     <kbd>{key}</kbd>
                     <span>{label}</span>
                 </div>
             ))}
-        </div>
+        </section>
     );
 }
 
