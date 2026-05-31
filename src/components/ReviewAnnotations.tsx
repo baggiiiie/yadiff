@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
-import { formatReviewSide } from '../format';
-import type { DraftReview, LineReview } from '../types';
+import { formatReviewLocation } from '../format';
+import type { DraftReview, SavedReview } from '../types';
 
 export function DraftReviewBox({
     draft,
@@ -22,7 +22,7 @@ export function DraftReviewBox({
 
     return (
         <div className="reviewAnnotation reviewDraft">
-            <div className="reviewAnnotationMeta">{draft.path}:{draft.lineNumber} ({formatReviewSide(draft.side)})</div>
+            <div className="reviewAnnotationMeta">{formatReviewLocation(draft)}</div>
             <textarea
                 ref={textareaRef}
                 aria-label="Review comment"
@@ -43,10 +43,10 @@ export function DraftReviewBox({
     );
 }
 
-export function SavedReviewAnnotation({ review, onDelete }: { review: LineReview; onDelete: () => void }) {
+export function SavedReviewAnnotation({ review, onDelete }: { review: SavedReview; onDelete: () => void }) {
     return (
         <div className="reviewAnnotation">
-            <div className="reviewAnnotationMeta">{review.path}:{review.lineNumber} ({formatReviewSide(review.side)})</div>
+            <div className="reviewAnnotationMeta">{formatReviewLocation(review)}</div>
             <div className="reviewAnnotationBody">{review.body}</div>
             <button
                 type="button"

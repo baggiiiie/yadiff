@@ -40,24 +40,20 @@ export interface FileStats {
     files: number;
 }
 
-export interface LineReview {
-    kind: 'saved';
-    id: string;
+export interface ReviewTarget {
     fileId: ProjectedFileIdentity;
     path: string;
-    lineNumber: number;
     side: AnnotationSide;
+    startLine: number;
+    endLine: number;
+}
+
+interface ReviewBase {
+    id: string;
+    target: ReviewTarget;
     body: string;
 }
 
-export interface DraftReview {
-    kind: 'draft';
-    id: string;
-    fileId: ProjectedFileIdentity;
-    path: string;
-    lineNumber: number;
-    side: AnnotationSide;
-    body: string;
-}
-
-export type ReviewAnnotation = LineReview | DraftReview;
+export type SavedReview = ReviewBase & { kind: 'saved' };
+export type DraftReview = ReviewBase & { kind: 'draft' };
+export type Review = SavedReview | DraftReview;

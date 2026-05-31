@@ -1,28 +1,86 @@
 import type { ProjectedFile } from '../diffProjection';
+import type { DraftReview, SavedReview } from '../types';
+import { DraftReviewBox, SavedReviewAnnotation } from './ReviewAnnotations';
 
-export function DiffHeader({ file, onToggle }: { file: ProjectedFile; onToggle: () => void }) {
+export interface FileReviewActions {
+    onDeleteReview: (id: string) => void;
+    onDraftCancel: (id: string) => void;
+    onDraftChange: (id: string, body: string) => void;
+    onDraftSave: (draft: DraftReview) => void;
+    onReviewFile: () => void;
+}
+
+export function DiffHeader({
+    actions,
+    draftReview,
+    file,
+    fileReviews,
+    onToggle,
+}: {
+    actions: FileReviewActions;
+    draftReview: DraftReview | null;
+    file: ProjectedFile;
+    fileReviews: SavedReview[];
+    onToggle: () => void;
+}) {
+    const hasFileReviewThread = draftReview != null || fileReviews.length > 0;
+
     return (
-        <div className="customFileHeader">
-            <button
-                type="button"
-                className="fileTitleButton"
-                aria-expanded={!file.collapsed}
-                onClick={onToggle}
-                title={file.collapsed ? 'Expand file' : 'Collapse file'}
-            >
-                <span className={`chevron ${file.collapsed ? 'collapsed' : ''}`} aria-hidden="true">›</span>
-                <ChangeIcon type={file.changeType} />
-                <span className="fileTitleText">
-                    {file.previousPath != null && file.previousPath !== file.path ? (
-                        <>
-                            <span>{file.previousPath}</span>
-                            <span className="renameArrow">⟶</span>
-                        </>
+        <div className="customFileHeaderFrame">
+            <div className="customFileHeader">
+                <button
+                    type="button"
+                    className="fileTitleButton"
+                    aria-expanded={!file.collapsed}
+                    onClick={onToggle}
+                    title={file.collapsed ? 'Expand file' : 'Collapse file'}
+                >
+                    <span className={`chevron ${file.collapsed ? 'collapsed' : ''}`} aria-hidden="true">›</span>
+                    <ChangeIcon type={file.changeType} />
+                    <span className="fileTitleText">
+                        {file.previousPath != null && file.previousPath !== file.path ? (
+                            <>
+                                <span>{file.previousPath}</span>
+                                <span className="renameArrow">⟶</span>
+                            </>
+                        ) : null}
+                        <span>{file.path}</span>
+                    </span>
+                </button>
+                <div className="fileHeaderActions">
+                    <FileReviewControls onReviewFile={actions.onReviewFile} />
+                    <FileMeta file={file} />
+                </div>
+            </div>
+            {hasFileReviewThread ? (
+                <div className="fileReviewThread">
+                    {fileReviews.map((review) => (
+                        <SavedReviewAnnotation
+                            key={review.id}
+                            review={review}
+                            onDelete={() => actions.onDeleteReview(review.id)}
+                        />
+                    ))}
+                    {draftReview != null ? (
+                        <DraftReviewBox
+                            draft={draftReview}
+                            onChange={(body) => actions.onDraftChange(draftReview.id, body)}
+                            onCancel={() => actions.onDraftCancel(draftReview.id)}
+                            onSave={() => actions.onDraftSave(draftReview)}
+                        />
                     ) : null}
-                    <span>{file.path}</span>
-                </span>
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
+function FileReviewControls({ onReviewFile }: { onReviewFile: () => void }) {
+    return (
+        <div className="fileReviewControls">
+            <button type="button" className="fileReviewButton" onClick={onReviewFile}>
+                Review file
             </button>
-            <FileMeta file={file} />
         </div>
     );
 }

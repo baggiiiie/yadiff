@@ -300,6 +300,11 @@ h1 span { color: var(--yd-muted); font-family: ui-monospace, SFMono-Regular, Men
   overflow: auto;
   overscroll-behavior: contain;
 }
+.customFileHeaderFrame {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
 .customFileHeader {
   width: 100%;
   min-width: 0;
@@ -353,7 +358,28 @@ h1 span { color: var(--yd-muted); font-family: ui-monospace, SFMono-Regular, Men
   white-space: nowrap;
 }
 .renameArrow { color: var(--yd-subtle); font-size: 0.85em; }
+.fileHeaderActions { display: inline-flex; align-items: center; gap: 10px; flex: none; }
 .fileMeta { display: inline-flex; gap: 8px; align-items: center; color: var(--yd-muted); font-size: 12px; flex: none; }
+.fileReviewControls { display: inline-flex; align-items: center; gap: 6px; }
+.fileReviewButton {
+  border: 1px solid var(--yd-border);
+  border-radius: 999px;
+  background: var(--yd-surface);
+  color: var(--yd-fg);
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 8px;
+  cursor: pointer;
+  list-style: none;
+}
+.fileReviewButton:hover { background: var(--yd-surface-active); }
+.fileReviewThread {
+  padding: 0 16px 10px;
+}
+.fileReviewThread .reviewAnnotation {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
 .reviewAnnotation {
   margin: 8px 16px 10px 88px;
   padding: 10px 12px;
@@ -414,4 +440,5 @@ h1 span { color: var(--yd-muted); font-family: ui-monospace, SFMono-Regular, Men
   .toolbar { align-items: flex-start; flex-direction: column; }
 
   .sidebar { border-right: 0; border-bottom: 1px solid var(--yd-border); padding: 8px; }
+  .fileReviewThread { padding-inline: 8px; }
 }

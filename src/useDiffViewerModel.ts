@@ -12,11 +12,12 @@ import {
     byteLength,
     formatBytes,
     formatCopyStatus,
-    formatReviewSide,
+    formatReviewLocation,
     formatStatusDetails,
     getLargeDiffLabel,
 } from './format';
-import type { DiffResponse, DiffStyle, DraftReview, LineReview, LoadState, Overflow, ReviewAnnotation } from './types';
+import { isFileReviewTarget } from './reviews';
+import type { DiffResponse, DiffStyle, DraftReview, LoadState, Overflow, Review, SavedReview } from './types';
 import { increment, modulo } from './utils';
 
 function useAppState() {
@@ -34,7 +35,7 @@ function useAppState() {
     const [showBackgrounds, setShowBackgrounds] = useState(true);
     const [lineNumbers, setLineNumbers] = useState(true);
     const [collapsedIds, setCollapsedIds] = useState<Set<ProjectedFileIdentity>>(() => new Set());
-    const [reviews, setReviews] = useState<LineReview[]>([]);
+    const [reviews, setReviews] = useState<SavedReview[]>([]);
     const [draftReview, setDraftReview] = useState<DraftReview | null>(null);
     const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'empty' | 'error'>('idle');
     const [showShortcuts, setShowShortcuts] = useState(false);
@@ -125,7 +126,7 @@ export function useDiffViewerModel() {
     const viewerScrollTopRef = useRef(0);
     const activeFileIndexRef = useRef(0);
     const [scrollTrigger, triggerScroll] = useReducer(increment, 0);
-    const viewerRef = useRef<CodeViewHandle<ReviewAnnotation>>(null);
+    const viewerRef = useRef<CodeViewHandle<Review>>(null);
     const nextReviewIdRef = useRef(0);
     const commitRequestIdRef = useRef(0);
     const onTreeSelectionRef = useRef<(paths: readonly string[]) => void>(() => undefined);
@@ -235,12 +236,14 @@ export function useDiffViewerModel() {
     const activePatch = activeCommitId != null ? (commitPatch ?? '') : patch;
     const diffKey = response == null ? 'empty' : activeCommitId ?? response.target;
     const parsedPatches = useMemo(() => parseDiffPatch(activePatch, diffKey), [activePatch, diffKey]);
-    const parsed = useMemo(() => createDiffProjection<ReviewAnnotation>({
+    const renderedLineReviews = useMemo(() => reviews.filter((review) => !isFileReviewTarget(review.target)), [reviews]);
+    const renderedLineDraftReview = draftReview != null && !isFileReviewTarget(draftReview.target) ? draftReview : null;
+    const parsed = useMemo(() => createDiffProjection<Review>({
         patches: parsedPatches,
         collapsedFileIds: collapsedIds,
-        reviews,
-        draftReview,
-    }), [collapsedIds, draftReview, parsedPatches, reviews]);
+        reviews: renderedLineReviews,
+        draftReview: renderedLineDraftReview,
+    }), [collapsedIds, renderedLineDraftReview, renderedLineReviews, parsedPatches]);
 
     const allCollapsed = parsed.files.length > 0 && parsed.files.every((file) => collapsedIds.has(file.id));
     const toggleAllCollapsed = useCallback(() => {
@@ -260,7 +263,7 @@ export function useDiffViewerModel() {
 
         const header = "Below is my review";
         const body = reviews
-            .map((review, index) => `${index + 1}. ${review.path}:${review.lineNumber} (${formatReviewSide(review.side)})\n   ${review.body}`)
+            .map((review, index) => `${index + 1}. ${formatReviewLocation(review)}\n   ${review.body}`)
             .join('\n');
         const text = `${header}\n${body}`;
         try {
@@ -269,7 +272,7 @@ export function useDiffViewerModel() {
         } catch {
             showCopyStatus('error');
         }
-    }, [response?.source, response?.target, reviews, showCopyStatus]);
+    }, [reviews, showCopyStatus]);
 
     const reviewButtonLabel = copyStatus === 'idle' ? `${reviews.length} Reviews (Y)` : formatCopyStatus(copyStatus);
     const effectivePatchBytes = loadedPatchBytes ?? response?.patchBytes;
@@ -418,6 +421,7 @@ export function useDiffViewerModel() {
         parsed,
         response,
         reviewButtonLabel,
+        reviews,
         selectCommit,
         setCollapsedIds,
         setCopyStatus,

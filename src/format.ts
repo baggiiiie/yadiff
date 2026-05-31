@@ -1,6 +1,7 @@
 import type { AnnotationSide } from '@pierre/diffs';
 
-import type { DiffStatusResponse, Source } from './types';
+import { isFileReviewTarget } from './reviews';
+import type { DiffStatusResponse, Review, ReviewTarget, Source } from './types';
 
 export function formatStatusDetails(status: DiffStatusResponse): string | null {
     if (status.status === 'fetching' && status.bytesDownloaded != null) {
@@ -38,12 +39,25 @@ export function getLargeDiffLabel(_source: Source | undefined, patchBytes: numbe
     return parts.join(' · ');
 }
 
-export function normalizeReviewSide(side: AnnotationSide | undefined): AnnotationSide {
-    return side ?? 'additions';
-}
-
 export function formatReviewSide(side: AnnotationSide): 'old' | 'new' {
     return side === 'deletions' ? 'old' : 'new';
+}
+
+export function formatReviewLocation(review: Review): string {
+    const { target } = review;
+    if (isFileReviewTarget(target)) {
+        return `${target.path} (file)`;
+    }
+
+    return `${target.path}${formatReviewRange(target)}`;
+}
+
+export function formatReviewRange(target: ReviewTarget): string {
+    const side = formatReviewSide(target.side);
+    const lineRange = target.startLine === target.endLine
+        ? `${target.startLine}`
+        : `${target.startLine}-${target.endLine}`;
+    return ` (${side}) Line ${lineRange}`;
 }
 
 export function formatCopyStatus(status: 'copied' | 'empty' | 'error') {

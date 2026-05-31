@@ -1,8 +1,11 @@
 import { CodeView } from '@pierre/diffs/react';
+import { useMemo } from 'react';
 
 import { REVIEW_UNSAFE_CSS } from '../constants';
-import { normalizeReviewSide } from '../format';
+import type { ProjectedFileIdentity } from '../diffProjection';
+import { createDraftReview, isFileReviewTarget, reviewMatchesFile, saveDraftReview } from '../reviews';
 import type { DiffViewerModel } from '../useDiffViewerModel';
+import type { SavedReview } from '../types';
 import { useThemeContext } from '../useTheme';
 import { DiffHeader } from './DiffHeader';
 import { DraftReviewBox, SavedReviewAnnotation } from './ReviewAnnotations';
@@ -10,11 +13,13 @@ import { DraftReviewBox, SavedReviewAnnotation } from './ReviewAnnotations';
 interface DiffViewerProps {
     activeCommitId: DiffViewerModel['activeCommitId'];
     diffStyle: DiffViewerModel['diffStyle'];
+    draftReview: DiffViewerModel['draftReview'];
     lineNumbers: DiffViewerModel['lineNumbers'];
     nextReviewIdRef: DiffViewerModel['nextReviewIdRef'];
     overflow: DiffViewerModel['overflow'];
     parsed: DiffViewerModel['parsed'];
     response: DiffViewerModel['response'];
+    reviews: DiffViewerModel['reviews'];
     setCollapsedIds: DiffViewerModel['setCollapsedIds'];
     setCopyStatus: DiffViewerModel['setCopyStatus'];
     setDraftReview: DiffViewerModel['setDraftReview'];
@@ -27,11 +32,13 @@ interface DiffViewerProps {
 export function DiffViewer({
     activeCommitId,
     diffStyle,
+    draftReview,
     lineNumbers,
     nextReviewIdRef,
     overflow,
     parsed,
     response,
+    reviews,
     setCollapsedIds,
     setCopyStatus,
     setDraftReview,
@@ -41,6 +48,28 @@ export function DiffViewer({
     viewerScrollTopRef,
 }: DiffViewerProps) {
     const { resolved: resolvedTheme } = useThemeContext();
+    const saveDraft = (draft: NonNullable<DiffViewerModel['draftReview']>) => {
+        if (draft.body.trim().length === 0) {
+            return;
+        }
+        setReviews((current) => [...current, saveDraftReview(draft, nextReviewIdRef.current++)]);
+        setDraftReview(null);
+    };
+
+    const fileReviewIndex = useMemo(() => {
+        const index = new Map<ProjectedFileIdentity, SavedReview[]>();
+        for (const review of reviews) {
+            if (!isFileReviewTarget(review.target)) continue;
+            const list = index.get(review.target.fileId);
+            if (list != null) {
+                list.push(review);
+            } else {
+                index.set(review.target.fileId, [review]);
+            }
+        }
+        return index;
+    }, [reviews]);
+
     return (
         <main className="viewer">
             {parsed.codeViewItems.length === 0 ? (
@@ -66,7 +95,7 @@ export function DiffViewer({
                         expansionLineCount: 50,
                         lineHoverHighlight: 'both',
                         enableGutterUtility: true,
-                        enableLineSelection: false,
+                        enableLineSelection: true,
                         stickyHeaders: true,
                         unsafeCSS: REVIEW_UNSAFE_CSS,
                         layout: { paddingTop: 12, paddingBottom: 32, gap: 12 },
@@ -78,17 +107,12 @@ export function DiffViewer({
                             if (file == null) {
                                 return;
                             }
-                            const side = normalizeReviewSide(range.endSide ?? range.side);
-                            const lineNumber = range.end;
-                            setDraftReview({
-                                kind: 'draft',
-                                id: `draft:${file.id}:${side}:${lineNumber}`,
+                            setDraftReview(createDraftReview({
                                 fileId: file.id,
                                 path: file.path,
-                                lineNumber,
-                                side,
-                                body: '',
-                            });
+                                range,
+                            }));
+                            viewerRef.current?.clearSelectedLines();
                             setCopyStatus('idle');
                         },
                     }}
@@ -103,25 +127,7 @@ export function DiffViewer({
                                     draft={review}
                                     onChange={(body) => setDraftReview((current) => current?.id === review.id ? { ...current, body } : current)}
                                     onCancel={() => setDraftReview((current) => current?.id === review.id ? null : current)}
-                                    onSave={() => {
-                                        const body = review.body.trim();
-                                        if (body.length === 0) {
-                                            return;
-                                        }
-                                        setReviews((current) => [
-                                            ...current,
-                                            {
-                                                kind: 'saved',
-                                                id: `${review.fileId}:${review.side}:${review.lineNumber}:${nextReviewIdRef.current++}`,
-                                                fileId: review.fileId,
-                                                path: review.path,
-                                                lineNumber: review.lineNumber,
-                                                side: review.side,
-                                                body,
-                                            },
-                                        ]);
-                                        setDraftReview(null);
-                                    }}
+                                    onSave={() => saveDraft(review)}
                                 />
                             );
                         }
@@ -136,9 +142,23 @@ export function DiffViewer({
                         if (item.type !== 'diff') return null;
                         const file = parsed.getFileForCodeViewItem(item);
                         if (file == null) return null;
+                        const fileReviews = fileReviewIndex.get(file.id) ?? [];
+                        const fileDraftReview = draftReview != null && isFileReviewTarget(draftReview.target) && reviewMatchesFile(draftReview, file.id) ? draftReview : null;
                         return (
                             <DiffHeader
+                                actions={{
+                                    onDeleteReview: (id) => setReviews((current) => current.filter((review) => review.id !== id)),
+                                    onDraftCancel: (id) => setDraftReview((current) => current?.id === id ? null : current),
+                                    onDraftChange: (id, body) => setDraftReview((current) => current?.id === id ? { ...current, body } : current),
+                                    onDraftSave: saveDraft,
+                                    onReviewFile: () => {
+                                        setDraftReview(createDraftReview({ fileId: file.id, path: file.path }));
+                                        setCopyStatus('idle');
+                                    },
+                                }}
+                                draftReview={fileDraftReview}
                                 file={file}
+                                fileReviews={fileReviews}
                                 onToggle={() => {
                                     setCollapsedIds((current) => {
                                         const next = new Set(current);

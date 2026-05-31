@@ -16,6 +16,7 @@ export function ReadyDiffView({ model }: { model: DiffViewerModel }) {
         copyReviews,
         copyStatus,
         diffStyle,
+        draftReview,
         keyboardActions,
         keyboardState,
         largeDiffLabel,
@@ -25,6 +26,7 @@ export function ReadyDiffView({ model }: { model: DiffViewerModel }) {
         parsed,
         response,
         reviewButtonLabel,
+        reviews,
         selectCommit,
         setCollapsedIds,
         setCopyStatus,
@@ -84,11 +86,13 @@ export function ReadyDiffView({ model }: { model: DiffViewerModel }) {
                 <DiffViewer
                     activeCommitId={activeCommitId}
                     diffStyle={diffStyle}
+                    draftReview={draftReview}
                     lineNumbers={lineNumbers}
                     nextReviewIdRef={nextReviewIdRef}
                     overflow={overflow}
                     parsed={parsed}
                     response={response}
+                    reviews={reviews}
                     setCollapsedIds={setCollapsedIds}
                     setCopyStatus={setCopyStatus}
                     setDraftReview={setDraftReview}
