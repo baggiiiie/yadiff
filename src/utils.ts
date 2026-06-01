@@ -10,7 +10,7 @@ export function modulo(value: number, divisor: number): number {
     return ((value % divisor) + divisor) % divisor;
 }
 
-export function isEditableShortcutTarget(target: EventTarget | null): boolean {
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
     if (!(target instanceof HTMLElement)) {
         return false;
     }

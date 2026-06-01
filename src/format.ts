@@ -39,7 +39,7 @@ export function getLargeDiffLabel(_source: Source | undefined, patchBytes: numbe
     return parts.join(' · ');
 }
 
-export function formatReviewSide(side: AnnotationSide): 'old' | 'new' {
+function formatReviewSide(side: AnnotationSide): 'old' | 'new' {
     return side === 'deletions' ? 'old' : 'new';
 }
 
@@ -52,7 +52,7 @@ export function formatReviewLocation(review: Review): string {
     return `${target.path}${formatReviewRange(target)}`;
 }
 
-export function formatReviewRange(target: ReviewTarget): string {
+function formatReviewRange(target: ReviewTarget): string {
     const side = formatReviewSide(target.side);
     const lineRange = target.startLine === target.endLine
         ? `${target.startLine}`

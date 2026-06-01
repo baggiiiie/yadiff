@@ -45,7 +45,6 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@pierre/theme": "^1.0.3",
     "express": "^5.2.0"
   },
   "devDependencies": {

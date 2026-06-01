@@ -24,16 +24,12 @@ function ReviewEditor({
     const [localBody, setLocalBody] = useState(initialBody);
 
     useEffect(() => {
-        setLocalBody(initialBody);
-    }, [review.id]);
-
-    useEffect(() => {
         if (autoFocus && textareaRef.current != null) {
             const el = textareaRef.current;
             el.focus();
             el.selectionStart = el.selectionEnd = el.value.length;
         }
-    }, [review.id, autoFocus]);
+    }, [autoFocus]);
 
     return (
         <div className="reviewAnnotation reviewDraft">
@@ -75,6 +71,7 @@ export function DraftReviewBox({
 }) {
     return (
         <ReviewEditor
+            key={draft.id}
             review={draft}
             autoFocus
             initialBody={draft.body}
@@ -92,6 +89,7 @@ export function SavedReviewAnnotation({ review, onDelete, onEdit }: { review: Sa
     if (editing) {
         return (
             <ReviewEditor
+                key={review.id}
                 review={review}
                 autoFocus
                 initialBody={review.body}
