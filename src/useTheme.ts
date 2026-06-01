@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, use, useCallback, useEffect, useMemo, useState } from 'react';
 
 export type ThemeMode = 'light' | 'dark' | 'auto';
 export type ResolvedTheme = 'light' | 'dark';
@@ -69,7 +69,7 @@ const ThemeContext = createContext<ThemeState | null>(null);
 export const ThemeProvider = ThemeContext.Provider;
 
 export function useThemeContext(): ThemeState {
-    const ctx = useContext(ThemeContext);
+    const ctx = use(ThemeContext);
     if (ctx == null) {
         throw new Error('useThemeContext must be used within a ThemeProvider');
     }
