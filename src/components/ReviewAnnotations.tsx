@@ -1,39 +1,54 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { formatReviewLocation } from '../format';
-import type { DraftReview, SavedReview } from '../types';
+import type { DraftReview, Review, SavedReview } from '../types';
 
-export function DraftReviewBox({
-    draft,
-    onCancel,
-    onChange,
+function ReviewEditor({
+    review,
+    autoFocus,
+    initialBody,
+    placeholder,
+    saveLabel,
     onSave,
+    onCancel,
 }: {
-    draft: DraftReview;
+    review: Review;
+    autoFocus: boolean;
+    initialBody: string;
+    placeholder?: string;
+    saveLabel: string;
+    onSave: (body: string) => void;
     onCancel: () => void;
-    onChange: (body: string) => void;
-    onSave: () => void;
 }) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const [localBody, setLocalBody] = useState(initialBody);
 
     useEffect(() => {
-        textareaRef.current?.focus();
-    }, []);
+        setLocalBody(initialBody);
+    }, [review.id]);
+
+    useEffect(() => {
+        if (autoFocus && textareaRef.current != null) {
+            const el = textareaRef.current;
+            el.focus();
+            el.selectionStart = el.selectionEnd = el.value.length;
+        }
+    }, [review.id, autoFocus]);
 
     return (
         <div className="reviewAnnotation reviewDraft">
-            <div className="reviewAnnotationMeta">{formatReviewLocation(draft)}</div>
+            <div className="reviewAnnotationMeta">{formatReviewLocation(review)}</div>
             <textarea
                 ref={textareaRef}
-                aria-label="Review comment"
+                aria-label={placeholder ?? 'Review comment'}
                 className="reviewTextarea"
-                placeholder="Leave a review comment"
-                value={draft.body}
-                onChange={(event) => onChange(event.currentTarget.value)}
+                placeholder={placeholder}
+                value={localBody}
+                onChange={(event) => setLocalBody(event.currentTarget.value)}
             />
             <div className="reviewDraftActions">
-                <button type="button" className="reviewSaveButton" onClick={onSave} disabled={draft.body.trim().length === 0}>
-                    Add review
+                <button type="button" className="reviewSaveButton" onClick={() => onSave(localBody)} disabled={localBody.trim().length === 0}>
+                    {saveLabel}
                 </button>
                 <button type="button" className="reviewCancelButton" onClick={onCancel}>
                     Cancel
@@ -43,18 +58,64 @@ export function DraftReviewBox({
     );
 }
 
-export function SavedReviewAnnotation({ review, onDelete }: { review: SavedReview; onDelete: () => void }) {
+export function DraftReviewBox({
+    draft,
+    onCancel,
+    onSave,
+}: {
+    draft: DraftReview;
+    onCancel: () => void;
+    onSave: (body: string) => void;
+}) {
+    return (
+        <ReviewEditor
+            review={draft}
+            autoFocus
+            initialBody={draft.body}
+            placeholder="Leave a review comment"
+            saveLabel="Add review"
+            onSave={onSave}
+            onCancel={onCancel}
+        />
+    );
+}
+
+export function SavedReviewAnnotation({ review, onDelete, onEdit }: { review: SavedReview; onDelete: () => void; onEdit: (body: string) => void }) {
+    const [editing, setEditing] = useState(false);
+
+    if (editing) {
+        return (
+            <ReviewEditor
+                review={review}
+                autoFocus
+                initialBody={review.body}
+                saveLabel="Save"
+                onSave={(body) => { onEdit(body); setEditing(false); }}
+                onCancel={() => setEditing(false)}
+            />
+        );
+    }
+
     return (
         <div className="reviewAnnotation">
             <div className="reviewAnnotationMeta">{formatReviewLocation(review)}</div>
             <div className="reviewAnnotationBody">{review.body}</div>
-            <button
-                type="button"
-                className="reviewAnnotationDelete"
-                onClick={onDelete}
-            >
-                Delete
-            </button>
+            <div className="reviewAnnotationActions">
+                <button
+                    type="button"
+                    className="reviewAnnotationEdit"
+                    onClick={() => setEditing(true)}
+                >
+                    Edit
+                </button>
+                <button
+                    type="button"
+                    className="reviewAnnotationDelete"
+                    onClick={onDelete}
+                >
+                    Delete
+                </button>
+            </div>
         </div>
     );
 }

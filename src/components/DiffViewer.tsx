@@ -125,9 +125,8 @@ export function DiffViewer({
                             return (
                                 <DraftReviewBox
                                     draft={review}
-                                    onChange={(body) => setDraftReview((current) => current?.id === review.id ? { ...current, body } : current)}
                                     onCancel={() => setDraftReview((current) => current?.id === review.id ? null : current)}
-                                    onSave={() => saveDraft(review)}
+                                    onSave={(body) => saveDraft({ ...review, body })}
                                 />
                             );
                         }
@@ -135,6 +134,7 @@ export function DiffViewer({
                             <SavedReviewAnnotation
                                 review={review}
                                 onDelete={() => setReviews((current) => current.filter((item) => item.id !== review.id))}
+                                onEdit={(body) => setReviews((current) => current.map((item) => item.id === review.id ? { ...item, body } : item))}
                             />
                         );
                     }}
@@ -149,8 +149,8 @@ export function DiffViewer({
                                 actions={{
                                     onDeleteReview: (id) => setReviews((current) => current.filter((review) => review.id !== id)),
                                     onDraftCancel: (id) => setDraftReview((current) => current?.id === id ? null : current),
-                                    onDraftChange: (id, body) => setDraftReview((current) => current?.id === id ? { ...current, body } : current),
-                                    onDraftSave: saveDraft,
+                                    onDraftSave: (draft, body) => saveDraft({ ...draft, body }),
+                                    onEditReview: (id, body) => setReviews((current) => current.map((review) => review.id === id ? { ...review, body } : review)),
                                     onReviewFile: () => {
                                         setDraftReview(createDraftReview({ fileId: file.id, path: file.path }));
                                         setCopyStatus('idle');

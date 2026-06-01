@@ -5,8 +5,8 @@ import { DraftReviewBox, SavedReviewAnnotation } from './ReviewAnnotations';
 export interface FileReviewActions {
     onDeleteReview: (id: string) => void;
     onDraftCancel: (id: string) => void;
-    onDraftChange: (id: string, body: string) => void;
-    onDraftSave: (draft: DraftReview) => void;
+    onDraftSave: (draft: DraftReview, body: string) => void;
+    onEditReview: (id: string, body: string) => void;
     onReviewFile: () => void;
 }
 
@@ -59,14 +59,14 @@ export function DiffHeader({
                             key={review.id}
                             review={review}
                             onDelete={() => actions.onDeleteReview(review.id)}
+                            onEdit={(body) => actions.onEditReview(review.id, body)}
                         />
                     ))}
                     {draftReview != null ? (
                         <DraftReviewBox
                             draft={draftReview}
-                            onChange={(body) => actions.onDraftChange(draftReview.id, body)}
                             onCancel={() => actions.onDraftCancel(draftReview.id)}
-                            onSave={() => actions.onDraftSave(draftReview)}
+                            onSave={(body) => actions.onDraftSave(draftReview, body)}
                         />
                     ) : null}
                 </div>
