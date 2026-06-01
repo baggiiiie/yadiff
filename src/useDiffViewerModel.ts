@@ -39,6 +39,7 @@ function useAppState() {
     const [draftReview, setDraftReview] = useState<DraftReview | null>(null);
     const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'empty' | 'error'>('idle');
     const [showShortcuts, setShowShortcuts] = useState(false);
+    const [treeViewHidden, setTreeViewHidden] = useState(false);
     const [activeCommitId, setActiveCommitId] = useState<string | null>(null);
     const [commitPatch, setCommitPatch] = useState<string | null>(null);
 
@@ -77,8 +78,10 @@ function useAppState() {
         setReviews,
         setShowBackgrounds,
         setShowShortcuts,
+        setTreeViewHidden,
         showBackgrounds,
         showShortcuts,
+        treeViewHidden,
     };
 }
 
@@ -118,8 +121,10 @@ export function useDiffViewerModel() {
         setReviews,
         setShowBackgrounds,
         setShowShortcuts,
+        setTreeViewHidden,
         showBackgrounds,
         showShortcuts,
+        treeViewHidden,
     } = useAppState();
     const pendingTreeScrollFileIdRef = useRef<ProjectedFileIdentity | null>(null);
     const shortcutScopeRef = useRef<HTMLDivElement>(null);
@@ -178,16 +183,14 @@ export function useDiffViewerModel() {
                     const sizeLabel = total != null ? `${formatBytes(downloaded)} / ${formatBytes(total)}` : formatBytes(downloaded);
                     setLoadingDetails(`Downloaded ${sizeLabel}`);
                 });
-                if (!cancelled) {
-                    setPatch(rawPatch);
-                    setLoadedPatchBytes(metadata.patchBytes ?? byteLength(rawPatch));
-                    setLoadState('ready');
-                }
+                if (cancelled) return;
+                setPatch(rawPatch);
+                setLoadedPatchBytes(metadata.patchBytes ?? byteLength(rawPatch));
+                setLoadState('ready');
             } catch (loadError) {
-                if (!cancelled) {
-                    setError(loadError instanceof Error ? loadError.message : String(loadError));
-                    setLoadState('error');
-                }
+                if (cancelled) return;
+                setError(loadError instanceof Error ? loadError.message : String(loadError));
+                setLoadState('error');
             }
         }
         void load();
@@ -249,6 +252,15 @@ export function useDiffViewerModel() {
     const toggleAllCollapsed = useCallback(() => {
         setCollapsedIds(allCollapsed ? new Set() : new Set(parsed.files.map((file) => file.id)));
     }, [allCollapsed, parsed.files, setCollapsedIds]);
+    const toggleTreeViewHidden = useCallback(() => {
+        setTreeViewHidden((hidden) => {
+            const nextHidden = !hidden;
+            if (nextHidden) {
+                treeSearch.close();
+            }
+            return nextHidden;
+        });
+    }, [setTreeViewHidden, treeSearch]);
 
     const showCopyStatus = useCallback((status: 'copied' | 'empty' | 'error') => {
         setCopyStatus(status);
@@ -386,13 +398,17 @@ export function useDiffViewerModel() {
         copyReviews: () => void copyReviews(),
         focusNextFile: () => navigateFile(1),
         focusPreviousFile: () => navigateFile(-1),
-        openTreeSearch: () => treeSearch.open(),
+        openTreeSearch: () => {
+            setTreeViewHidden(false);
+            treeSearch.open();
+        },
         toggleAllCollapsed,
         toggleBackgrounds: () => setShowBackgrounds((value) => !value),
         toggleDiffStyle: () => setDiffStyle((value) => value === 'unified' ? 'split' : 'unified'),
         toggleLineNumbers: () => setLineNumbers((value) => !value),
         toggleOverflow: () => setOverflow((value) => value === 'wrap' ? 'scroll' : 'wrap'),
         toggleShortcutHelp: () => setShowShortcuts((value) => !value),
+        toggleTreeViewHidden,
     };
 
     const keyboardState = {
@@ -436,7 +452,9 @@ export function useDiffViewerModel() {
         showBackgrounds,
         showShortcuts,
         toggleAllCollapsed,
+        toggleTreeViewHidden,
         treeModel,
+        treeViewHidden,
         viewerRef,
         viewerScrollTopRef,
     };

@@ -113,6 +113,17 @@
 html, body, #root { height: 100%; margin: 0; }
 body { overflow: hidden; background: var(--yd-bg); color: var(--yd-fg); }
 button, input { font: inherit; }
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 .app {
   height: 100%;
@@ -123,7 +134,9 @@ button, input { font: inherit; }
     "toolbar toolbar"
     "sidebar viewer";
   background: var(--yd-gradient);
+  transition: grid-template-columns 0.18s ease;
 }
+.app.treeViewHidden { grid-template-columns: 36px minmax(0, 1fr); }
 .app:focus { outline: none; }
 
 .toolbar {
@@ -217,6 +230,8 @@ h1 span { color: var(--yd-muted); font-family: ui-monospace, SFMono-Regular, Men
 
 .sidebar {
   grid-area: sidebar;
+  position: relative;
+  z-index: 40;
   min-width: 0;
   min-height: 0;
   padding: 10px 0 10px 10px;
@@ -224,6 +239,44 @@ h1 span { color: var(--yd-muted); font-family: ui-monospace, SFMono-Regular, Men
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--yd-bg);
+  transition: transform 0.18s ease;
+}
+.sidebarHidden {
+  width: 320px;
+  padding: 10px 0;
+  align-items: flex-end;
+  transform: translateX(calc(-100% + 36px));
+}
+.sidebarContent {
+  min-height: 0;
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.sidebarToggle {
+  flex: none;
+  align-self: flex-end;
+  min-width: 28px;
+  min-height: 28px;
+  margin: 0 8px 6px 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--yd-border);
+  border-radius: 999px;
+  background: var(--yd-surface);
+  color: var(--yd-fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+.sidebarToggle:hover { background: var(--yd-surface-active); }
+.sidebarHidden .sidebarToggle {
+  margin: 0 4px 0 0;
+  min-height: 92px;
+  padding: 8px 4px;
+  writing-mode: vertical-rl;
 }
 .fileTree {
   --trees-bg-override: var(--yd-bg);
@@ -448,9 +501,13 @@ h1 span { color: var(--yd-muted); font-family: ui-monospace, SFMono-Regular, Men
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 800px) {
-  .app { grid-template-columns: 1fr; grid-template-rows: auto 180px minmax(0, 1fr); grid-template-areas: "toolbar" "sidebar" "viewer"; }
+  .app,
+  .app.treeViewHidden { grid-template-columns: 1fr; grid-template-rows: auto 180px minmax(0, 1fr); grid-template-areas: "toolbar" "sidebar" "viewer"; }
+  .app.treeViewHidden { grid-template-rows: auto 36px minmax(0, 1fr); }
   .toolbar { align-items: flex-start; flex-direction: column; }
 
   .sidebar { border-right: 0; border-bottom: 1px solid var(--yd-border); padding: 8px; }
+  .sidebarHidden { width: auto; transform: none; padding: 4px 8px; }
+  .sidebarHidden .sidebarToggle { margin: 0; min-height: 28px; padding: 4px 10px; writing-mode: horizontal-tb; }
   .fileReviewThread { padding-inline: 8px; }
 }

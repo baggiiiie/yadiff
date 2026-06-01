@@ -19,6 +19,7 @@ export const DIFF_HIGHLIGHTER_OPTIONS = {
 
 export const SHORTCUTS: [string, string][] = [
     ['T', 'Tree search'],
+    ['S', 'Show or hide tree view'],
     ['U', 'Unified diff'],
     ['W', 'Line wrap'],
     ['L', 'Line numbers'],

@@ -22,6 +22,8 @@ interface ToolbarProps {
     showBackgrounds: DiffViewerModel['showBackgrounds'];
     showShortcuts: DiffViewerModel['showShortcuts'];
     toggleAllCollapsed: DiffViewerModel['toggleAllCollapsed'];
+    toggleTreeViewHidden: DiffViewerModel['toggleTreeViewHidden'];
+    treeViewHidden: DiffViewerModel['treeViewHidden'];
 }
 
 export function Toolbar({
@@ -42,6 +44,8 @@ export function Toolbar({
     showBackgrounds,
     showShortcuts,
     toggleAllCollapsed,
+    toggleTreeViewHidden,
+    treeViewHidden,
 }: ToolbarProps) {
     const theme = useThemeContext();
     const themeLabel = theme.mode === 'auto' ? 'Auto' : theme.mode === 'light' ? 'Light' : 'Dark';
@@ -85,6 +89,9 @@ export function Toolbar({
                 </PillButton>
                 <PillButton active={showBackgrounds} onClick={() => setShowBackgrounds((value) => !value)} title="Toggle background highlights (B)">
                     Background (B)
+                </PillButton>
+                <PillButton active={!treeViewHidden} onClick={toggleTreeViewHidden} title={treeViewHidden ? 'Show tree view (S)' : 'Hide tree view (S)'}>
+                    Tree (S)
                 </PillButton>
                 <PillButton active={theme.mode !== 'auto'} onClick={theme.cycleTheme} title="Cycle theme: auto / light / dark (D)">
                     {themeLabel} (D)

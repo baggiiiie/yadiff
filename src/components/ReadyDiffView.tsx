@@ -41,7 +41,9 @@ export function ReadyDiffView({ model }: { model: DiffViewerModel }) {
         showBackgrounds,
         showShortcuts,
         toggleAllCollapsed,
+        toggleTreeViewHidden,
         treeModel,
+        treeViewHidden,
         viewerRef,
         viewerScrollTopRef,
     } = model;
@@ -54,7 +56,7 @@ export function ReadyDiffView({ model }: { model: DiffViewerModel }) {
 
     return (
         <WorkerPoolContextProvider poolOptions={DIFF_WORKER_POOL_OPTIONS} highlighterOptions={DIFF_HIGHLIGHTER_OPTIONS}>
-            <div ref={shortcutScopeRef} className="app" tabIndex={-1}>
+            <div ref={shortcutScopeRef} className={treeViewHidden ? 'app treeViewHidden' : 'app'} tabIndex={-1}>
                 <Toolbar
                     allCollapsed={allCollapsed}
                     copyReviews={copyReviews}
@@ -73,6 +75,8 @@ export function ReadyDiffView({ model }: { model: DiffViewerModel }) {
                     showBackgrounds={showBackgrounds}
                     showShortcuts={showShortcuts}
                     toggleAllCollapsed={toggleAllCollapsed}
+                    toggleTreeViewHidden={toggleTreeViewHidden}
+                    treeViewHidden={treeViewHidden}
                 />
 
                 <Sidebar
@@ -80,7 +84,9 @@ export function ReadyDiffView({ model }: { model: DiffViewerModel }) {
                     parsed={parsed}
                     response={response}
                     selectCommit={selectCommit}
+                    toggleTreeViewHidden={toggleTreeViewHidden}
                     treeModel={treeModel}
+                    treeViewHidden={treeViewHidden}
                 />
 
                 <DiffViewer
