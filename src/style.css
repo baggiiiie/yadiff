@@ -425,6 +425,18 @@ h1 span { color: var(--yd-muted); font-family: ui-monospace, SFMono-Regular, Men
   background: var(--yd-delete-btn-bg);
 }
 .reviewAnnotationDelete:hover { background: var(--yd-delete-btn-bg-hover); }
+.reviewAnnotationActions { display: flex; gap: 8px; margin-top: 8px; }
+.reviewAnnotationActions .reviewAnnotationEdit,
+.reviewAnnotationActions .reviewAnnotationDelete { margin-top: 0; }
+.reviewAnnotationEdit {
+  border: 0;
+  border-radius: 999px;
+  padding: 5px 10px;
+  cursor: pointer;
+  color: var(--yd-cancel-btn-fg);
+  background: var(--yd-cancel-btn-bg);
+}
+.reviewAnnotationEdit:hover { background: var(--yd-delete-btn-bg-hover); }
 .empty { padding: 32px; color: var(--yd-muted); }
 
 .shell { height: 100%; display: grid; place-items: center; background: var(--yd-bg); }
