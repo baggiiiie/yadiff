@@ -45,10 +45,16 @@ function ReviewEditor({
                 placeholder={placeholder}
                 value={localBody}
                 onChange={(event) => setLocalBody(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                    if (event.key === 'Enter' && localBody.trim().length > 0) {
+                        event.preventDefault();
+                        onSave(localBody);
+                    }
+                }}
             />
             <div className="reviewDraftActions">
                 <button type="button" className="reviewSaveButton" onClick={() => onSave(localBody)} disabled={localBody.trim().length === 0}>
-                    {saveLabel}
+                    {saveLabel} ↵
                 </button>
                 <button type="button" className="reviewCancelButton" onClick={onCancel}>
                     Cancel
