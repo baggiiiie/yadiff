@@ -23,6 +23,7 @@ export interface KeyboardRouterActions {
     toggleLineNumbers: () => void;
     toggleOverflow: () => void;
     toggleShortcutHelp: () => void;
+    toggleTreeViewHidden: () => void;
 }
 
 interface KeyboardRouterOptions {
@@ -86,6 +87,9 @@ function routeAppShortcut(event: KeyboardEvent, options: KeyboardRouterOptions):
     switch (key) {
         case 't':
             actions.openTreeSearch();
+            break;
+        case 's':
+            actions.toggleTreeViewHidden();
             break;
         case 'u':
             actions.toggleDiffStyle();
