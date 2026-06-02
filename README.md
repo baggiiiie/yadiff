@@ -12,14 +12,14 @@ A browser diff viewer for local git/jj diffs and GitHub PRs. It uses [pierrecomp
 Run directly with `npx`:
 
 ```bash
-npx yadiff <git-ref-or-range>/<jj-revset>/<github-pr-url>
-npx yadiff --working/--staged/--dirty
+npx @baggiiiie/yadiff <git-ref-or-range>/<jj-revset>/<github-pr-url>
+npx @baggiiiie/yadiff --working/--staged/--dirty
 ```
 
 Or install globally:
 
 ```bash
-npm install -g yadiff
+npm install -g @baggiiiie/yadiff
 yadiff HEAD
 ```
 
@@ -32,23 +32,23 @@ Use `--foreground` to keep the server attached to the current terminal.
 Git:
 
 ```bash
-npx yadiff HEAD
-npx yadiff main..feature
-npx yadiff main...HEAD --repo ../some-repo
-npx yadiff --working/--staged/--dirty
+npx @baggiiiie/yadiff HEAD
+npx @baggiiiie/yadiff main..feature
+npx @baggiiiie/yadiff main...HEAD --repo ../some-repo
+npx @baggiiiie/yadiff --working/--staged/--dirty
 ```
 
 jj:
 
 ```bash
-npx yadiff @ --repo ../some-jj-repo
-npx yadiff 'mine() & mutable()' --vcs jj
+npx @baggiiiie/yadiff @ --repo ../some-jj-repo
+npx @baggiiiie/yadiff 'mine() & mutable()' --vcs jj
 ```
 
 GitHub:
 
 ```bash
-npx yadiff https://github.com/oven-sh/bun/pull/30412
+npx @baggiiiie/yadiff https://github.com/oven-sh/bun/pull/30412
 ```
 
 ## GitHub pull requests
