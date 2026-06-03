@@ -1,5 +1,7 @@
 # yadiff, yet another diff viewer
 
+<img src="assets/screenshot.png" alt="screenshot" width="800" />
+
 > Huge shoutout to [pierrecomputer](https://github.com/pierrecomputer/pierre). Inspired by [diffshub](https://diffshub.com/), this tool is only possible thanks to the incredibly beautiful and high-performance diff and tree packages. All credit goes to the team!
 
 A browser diff viewer for local git/jj diffs and GitHub PRs. It uses [pierrecomputer](https://github.com/pierrecomputer/pierre)'s open-source packages:
@@ -51,17 +53,9 @@ GitHub:
 npx @baggiiiie/yadiff https://github.com/oven-sh/bun/pull/30412
 ```
 
-## GitHub pull requests
+Passing bun test:
 
-Supported GitHub Targets are public pull request URLs:
-
-```text
-https://github.com/OWNER/REPO/pull/123
-https://github.com/OWNER/REPO/pull/123/files
-https://github.com/OWNER/REPO/pull/123/commits
-```
-
-GitHub PR support intentionally excludes private repositories, authenticated requests, GitHub Enterprise, commit URLs, compare URLs, branch/blob URLs, and GitHub review/comment syncing. GitHub PRs are fetched once by the local server and cached for the life of the yadiff process; browser reloads reuse the captured PR diff.
+https://github.com/user-attachments/assets/aeef9e88-5626-4799-9333-c4b9088282c8
 
 ## potential future improvement
 
