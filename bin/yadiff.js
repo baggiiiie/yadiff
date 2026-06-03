@@ -2,7 +2,7 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { dirname, resolve } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import express from 'express';
@@ -44,6 +44,7 @@ Options:
   --foreground      Keep the local server attached to this terminal
   --verbose         Print server/source details while running
   --dev             Use Vite dev server (for development only)
+  -v, --version     Show version
   -h, --help        Show this help
 `);
 }
@@ -65,6 +66,8 @@ function parseArgs(argv) {
     const arg = argv[index];
     if (arg === '-h' || arg === '--help') {
       args.help = true;
+    } else if (arg === '-v' || arg === '--version') {
+      args.version = true;
     } else if (arg === '--working' || arg === '--staged' || arg === '--dirty') {
       if (args.mode != null) {
         throw new Error(`Only one diff mode can be used at a time: ${args.mode} and ${arg}`);
@@ -262,6 +265,10 @@ function attachStaticMiddleware(app) {
 async function main() {
   const argv = process.argv.slice(2);
   const args = parseArgs(argv);
+  if (args.version) {
+    console.log(readVersion());
+    return;
+  }
   if (args.help) {
     printUsage();
     return;
@@ -468,6 +475,15 @@ function listenWithFallback(server, preferredPort, host, portExplicit, verbose) 
       resolveListen(addr && typeof addr === 'object' ? addr.port : preferredPort);
     });
   });
+}
+
+function readVersion() {
+  try {
+    const pkg = JSON.parse(readFileSync(resolve(projectRoot, 'package.json'), 'utf8'));
+    return pkg.version ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }
 
 function formatSource(source) {
