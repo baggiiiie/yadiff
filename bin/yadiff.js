@@ -15,12 +15,13 @@ const BACKGROUND_SERVER_ENV = 'YADIFF_BACKGROUND_SERVER';
 const SERVER_IDLE_TIMEOUT_MS = 60_000;
 
 function printUsage() {
-  console.log(`Usage: yadiff <git-ref-or-range-or-jj-revset-or-github-pr-url> [options]
+  console.log(`Usage: yadiff [git-ref-or-range-or-jj-revset-or-github-pr-url] [options]
        yadiff --working [options]
        yadiff --staged [options]
        yadiff --dirty [options]
 
 Examples:
+  yadiff
   yadiff abc123
   yadiff main..feature
   yadiff main...HEAD --repo ../my-repo
@@ -32,6 +33,7 @@ Examples:
   yadiff --dirty
 
 Options:
+  No target defaults to --working.
   --working          Show unstaged tracked-file changes (git diff), or jj @ if no git repo exists
   --staged           Show staged changes (git diff --cached; git only)
   --dirty            Show staged + unstaged tracked-file changes (git diff HEAD), or jj @ if no git repo exists
@@ -274,9 +276,7 @@ async function main() {
     return;
   }
   if (args.target == null && args.mode == null) {
-    printUsage();
-    process.exitCode = 1;
-    return;
+    args.mode = 'working';
   }
 
   if (shouldLaunchBackgroundServer(args)) {
