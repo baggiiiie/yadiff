@@ -445,7 +445,7 @@ h1 span { color: var(--yd-muted); font-family: ui-monospace, SFMono-Regular, Men
 }
 .reviewDraft { border-color: var(--yd-accent-border); }
 .reviewAnnotationMeta { color: var(--yd-accent-text); font-size: 12px; margin-bottom: 8px; }
-.reviewAnnotationBody { line-height: 1.45; }
+.reviewAnnotationBody { line-height: 1.45; white-space: pre-wrap; }
 .reviewTextarea {
   display: block;
   width: 100%;

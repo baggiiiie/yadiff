@@ -42,7 +42,7 @@ function ReviewEditor({
                 value={localBody}
                 onChange={(event) => setLocalBody(event.currentTarget.value)}
                 onKeyDown={(event) => {
-                    if (event.key === 'Enter' && localBody.trim().length > 0) {
+                    if (event.key === 'Enter' && !event.shiftKey && localBody.trim().length > 0) {
                         event.preventDefault();
                         onSave(localBody);
                     }
