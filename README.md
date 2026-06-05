@@ -26,7 +26,7 @@ npm install -g @baggiiiie/yadiff
 yadiff HEAD
 ```
 
-The command starts a local server in the background, opens the browser, acquires a diff from the selected source, and serves the patch to the browser. With no target, it defaults to `--working` (`git diff`, or `jj @` if no git repo exists). The shell command exits after launch. When there are no browser sessions for one minute, the local server exits automatically.
+The command starts a local server in the background, opens the browser, acquires a diff from the selected source, and serves the patch to the browser. With no target, it defaults to `--working` (`jj @` in a jj workspace, otherwise `git diff`). The shell command exits after launch. When there are no browser sessions for one minute, the local server exits automatically.
 
 Use `--foreground` to keep the server attached to the current terminal.
 

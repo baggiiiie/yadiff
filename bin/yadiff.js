@@ -34,9 +34,9 @@ Examples:
 
 Options:
   No target defaults to --working.
-  --working          Show unstaged tracked-file changes (git diff), or jj @ if no git repo exists
+  --working          Show unstaged tracked-file changes (git diff), or jj @ in a jj workspace
   --staged           Show staged changes (git diff --cached; git only)
-  --dirty            Show staged + unstaged tracked-file changes (git diff HEAD), or jj @ if no git repo exists
+  --dirty            Show staged + unstaged tracked-file changes (git diff HEAD), or jj @ in a jj workspace
   --repo <path>      Repository/workspace path, including subdirectories (default: current directory; ignored for GitHub PR URLs)
   --vcs <auto|git|jj> Select local VCS backend (default: auto; not valid for GitHub PR URLs)
   --git              Shortcut for --vcs git
