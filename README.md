@@ -62,7 +62,7 @@ https://github.com/user-attachments/assets/aeef9e88-5626-4799-9333-c4b9088282c8
 ## potential future improvement
 
 - add a button to sync review to github, with `gh` cli?
-- copy filename; open file with `$EDITOR`
+- copy filename
 - support for private repo and enterprise, with `gh` cli
 - stdin support
 

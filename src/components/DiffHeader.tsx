@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { ProjectedFile } from '../diffProjection';
 import type { DraftReview, SavedReview } from '../types';
 import { DraftReviewBox, SavedReviewAnnotation } from './ReviewAnnotations';
@@ -48,6 +49,7 @@ export function DiffHeader({
                     </span>
                 </button>
                 <div className="fileHeaderActions">
+                    <FileActions path={file.path} />
                     <FileReviewControls onReviewFile={actions.onReviewFile} />
                     <FileMeta file={file} />
                 </div>
@@ -71,6 +73,33 @@ export function DiffHeader({
                     ) : null}
                 </div>
             ) : null}
+        </div>
+    );
+}
+
+function FileActions({ path }: { path: string }) {
+    const [copied, setCopied] = useState(false);
+
+    const onCopy = async () => {
+        try {
+            await navigator.clipboard.writeText(path);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+        } catch {
+            setCopied(false);
+        }
+    };
+
+    return (
+        <div className="fileActions">
+            <button
+                type="button"
+                className="fileReviewButton"
+                onClick={onCopy}
+                title="Copy file name"
+            >
+                {copied ? 'Copied' : 'Copy file name'}
+            </button>
         </div>
     );
 }

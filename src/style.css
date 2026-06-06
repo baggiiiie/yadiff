@@ -414,6 +414,7 @@ h1 span { color: var(--yd-muted); font-family: ui-monospace, SFMono-Regular, Men
 .fileHeaderActions { display: inline-flex; align-items: center; gap: 10px; flex: none; }
 .fileMeta { display: inline-flex; gap: 8px; align-items: center; color: var(--yd-muted); font-size: 12px; flex: none; }
 .fileReviewControls { display: inline-flex; align-items: center; gap: 6px; }
+.fileActions { display: inline-flex; align-items: center; gap: 6px; }
 .fileReviewButton {
   border: 1px solid var(--yd-border);
   border-radius: 999px;
