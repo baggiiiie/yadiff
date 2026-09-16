@@ -1,4 +1,7 @@
+import { useState } from 'react';
+
 import { formatSource } from '../format';
+import { useDismissablePopover } from '../useDismissablePopover';
 import type { DiffViewerModel } from '../useDiffViewerModel';
 import { useThemeContext } from '../useTheme';
 import { PillButton } from './PillButton';
@@ -49,6 +52,8 @@ export function Toolbar({
 }: ToolbarProps) {
     const theme = useThemeContext();
     const themeLabel = theme.mode === 'auto' ? 'Auto' : theme.mode === 'light' ? 'Light' : 'Dark';
+    const [controlsOpen, setControlsOpen] = useState(false);
+    const controlsRef = useDismissablePopover({ onClose: () => setControlsOpen(false), open: controlsOpen });
     return (
         <header className="toolbar">
             <div className="titleBlock">
@@ -65,44 +70,57 @@ export function Toolbar({
             >
                 Powered by Diffs and Trees
             </a>
-            <div className="controls">
-                <div className="shortcutHelp">
+            <div className="controlsWrap" ref={controlsRef}>
+                <button
+                    type="button"
+                    className="button controlsToggle"
+                    aria-expanded={controlsOpen}
+                    aria-label="Diff options"
+                    onClick={() => setControlsOpen((value) => !value)}
+                    title="Diff options"
+                >
+                    <span aria-hidden="true">⋯</span>
+                </button>
+                <div className="controls" data-open={controlsOpen ? '' : undefined}>
                     <button
                         type="button"
                         className="shortcutHelpButton"
                         aria-expanded={showShortcuts}
-                        onClick={() => setShowShortcuts((value) => !value)}
+                        onClick={() => {
+                            setControlsOpen(false);
+                            setShowShortcuts((value) => !value);
+                        }}
                         title="Show keyboard shortcuts (?)"
                     >
                         Shortcuts (?)
                     </button>
-                    {showShortcuts ? <ShortcutHelp /> : null}
+                    <PillButton active={diffStyle === 'unified'} onClick={() => setDiffStyle(diffStyle === 'unified' ? 'split' : 'unified')} title="Toggle unified diff (U)">
+                        Unified (U)
+                    </PillButton>
+                    <PillButton active={overflow === 'wrap'} onClick={() => setOverflow(overflow === 'wrap' ? 'scroll' : 'wrap')} title="Toggle line wrap (W)">
+                        Wrap (W)
+                    </PillButton>
+                    <PillButton active={lineNumbers} onClick={() => setLineNumbers((value) => !value)} title="Toggle line numbers (L)">
+                        Lines (L)
+                    </PillButton>
+                    <PillButton active={showBackgrounds} onClick={() => setShowBackgrounds((value) => !value)} title="Toggle background highlights (B)">
+                        Background (B)
+                    </PillButton>
+                    <PillButton active={!treeViewHidden} onClick={toggleTreeViewHidden} title={treeViewHidden ? 'Show tree view (S)' : 'Hide tree view (S)'}>
+                        Tree (S)
+                    </PillButton>
+                    <PillButton active={theme.mode !== 'auto'} onClick={theme.cycleTheme} title="Cycle theme: auto / light / dark (D)">
+                        {themeLabel} (D)
+                    </PillButton>
+                    <PillButton active={allCollapsed} onClick={toggleAllCollapsed} title={allCollapsed ? 'Expand all files (C)' : 'Collapse all files (C)'}>
+                        {allCollapsed ? 'Expand (C)' : 'Collapse (C)'}
+                    </PillButton>
+                    <button type="button" className={copyStatus === 'idle' ? 'button' : `button status-${copyStatus}`} onClick={copyReviews} title="Copy reviews (Y)">
+                        {reviewButtonLabel}
+                    </button>
+                    <a className="button" href="/api/raw.diff" target="_blank" rel="noreferrer">Raw</a>
                 </div>
-                <PillButton active={diffStyle === 'unified'} onClick={() => setDiffStyle(diffStyle === 'unified' ? 'split' : 'unified')} title="Toggle unified diff (U)">
-                    Unified (U)
-                </PillButton>
-                <PillButton active={overflow === 'wrap'} onClick={() => setOverflow(overflow === 'wrap' ? 'scroll' : 'wrap')} title="Toggle line wrap (W)">
-                    Wrap (W)
-                </PillButton>
-                <PillButton active={lineNumbers} onClick={() => setLineNumbers((value) => !value)} title="Toggle line numbers (L)">
-                    Lines (L)
-                </PillButton>
-                <PillButton active={showBackgrounds} onClick={() => setShowBackgrounds((value) => !value)} title="Toggle background highlights (B)">
-                    Background (B)
-                </PillButton>
-                <PillButton active={!treeViewHidden} onClick={toggleTreeViewHidden} title={treeViewHidden ? 'Show tree view (S)' : 'Hide tree view (S)'}>
-                    Tree (S)
-                </PillButton>
-                <PillButton active={theme.mode !== 'auto'} onClick={theme.cycleTheme} title="Cycle theme: auto / light / dark (D)">
-                    {themeLabel} (D)
-                </PillButton>
-                <PillButton active={allCollapsed} onClick={toggleAllCollapsed} title={allCollapsed ? 'Expand all files (C)' : 'Collapse all files (C)'}>
-                    {allCollapsed ? 'Expand (C)' : 'Collapse (C)'}
-                </PillButton>
-                <button type="button" className={copyStatus === 'idle' ? 'button' : `button status-${copyStatus}`} onClick={copyReviews} title="Copy reviews (Y)">
-                    {reviewButtonLabel}
-                </button>
-                <a className="button" href="/api/raw.diff" target="_blank" rel="noreferrer">Raw</a>
+                {showShortcuts ? <ShortcutHelp /> : null}
             </div>
         </header>
     );

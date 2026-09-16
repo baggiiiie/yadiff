@@ -6,6 +6,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import express from 'express';
+import MarkdownIt from 'markdown-it';
+
 import { parsePatchFiles, processFile } from '@pierre/diffs';
 
 import { createTarget } from '../lib/target/index.js';
@@ -35,9 +37,9 @@ Examples:
 
 Options:
   No target defaults to --working.
-  --working          Show unstaged tracked-file changes (git diff), or jj @ in a jj workspace
+  --working          Show unstaged file changes, including untracked files (git diff), or jj @ in a jj workspace
   --staged           Show staged changes (git diff --cached; git only)
-  --dirty            Show staged + unstaged tracked-file changes (git diff HEAD), or jj @ in a jj workspace
+  --dirty            Show staged + unstaged file changes, including untracked files (git diff HEAD), or jj @ in a jj workspace
   --repo <path>      Repository/workspace path, including subdirectories (default: current directory; ignored for GitHub PR URLs)
   --vcs <auto|git|jj> Select local VCS backend (default: auto; not valid for GitHub PR URLs)
   --git              Shortcut for --vcs git
@@ -433,6 +435,60 @@ async function runServer(args) {
     }
   });
 
+  app.get('/api/file', async (req, res) => {
+    try {
+      const path = typeof req.query.path === 'string' ? req.query.path : null;
+      if (path == null) {
+        res.status(400).type('text/plain').send('Missing path query parameter.');
+        return;
+      }
+      if (typeof target.getFileContents !== 'function') {
+        res.status(404).type('text/plain').send('Full file contents are not available for this source.');
+        return;
+      }
+
+      const commitId = typeof req.query.commitId === 'string' ? req.query.commitId : null;
+      const patch = commitId == null ? await target.getPatch() : await target.getCommitPatch(commitId);
+      const file = findPatchedFile(parsePatchFiles(patch), path);
+      if (file == null) {
+        res.status(404).type('text/plain').send(`No changed file matches ${path}.`);
+        return;
+      }
+
+      const contents = await target.getFileContents(file);
+      const side = file.type === 'deleted' ? contents?.oldFile : contents?.newFile;
+      if (side == null) {
+        res.status(404).type('text/plain').send(`Could not read the full contents of ${path}.`);
+        return;
+      }
+
+      if (req.query.format === 'raw') {
+        res
+          .type('text/plain; charset=utf-8')
+          .set('X-Content-Type-Options', 'nosniff')
+          .set('Content-Disposition', 'inline')
+          .send(side.contents);
+        return;
+      }
+
+      const markdownFile = isMarkdownPath(file.name);
+      res
+        .type('text/html; charset=utf-8')
+        .set('X-Content-Type-Options', 'nosniff')
+        .set('Content-Security-Policy', markdownFile ? MARKDOWN_PAGE_CSP : SOURCE_PAGE_CSP)
+        .set('Content-Disposition', 'inline')
+        .send(markdownFile
+          ? renderMarkdownPage({ contents: side.contents, path: file.name })
+          : renderFilePage({
+              addedLines: getAddedLineNumbers(file),
+              contents: side.contents,
+              path: file.name,
+            }));
+    } catch (error) {
+      res.status(target.source === 'github' ? 400 : 500).type('text/plain').send(error instanceof Error ? error.message : String(error));
+    }
+  });
+
   if (args.dev) {
     await attachViteDevMiddleware(app, args.verbose);
   } else {
@@ -541,6 +597,190 @@ function splitPatchFileChunks(patch) {
 
 function countParsedFiles(patches) {
   return patches.reduce((total, patch) => total + patch.files.length, 0);
+}
+
+function findPatchedFile(patches, path) {
+  for (const patch of patches) {
+    for (const file of patch.files) {
+      if (file.name === path || file.prevName === path) {
+        return file;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * New-side line numbers that this diff introduces. Deletions are deliberately ignored:
+ * the file page renders the file as it exists now, so removed lines have nothing to mark.
+ * Added files are covered by the same walk, since git emits one hunk spanning the file.
+ */
+function getAddedLineNumbers(file) {
+  const added = new Set();
+  for (const hunk of file.hunks) {
+    let lineNumber = hunk.additionStart;
+    for (const content of hunk.hunkContent) {
+      if (content.type === 'context') {
+        lineNumber += content.lines;
+        continue;
+      }
+      for (let offset = 0; offset < content.additions; offset++) {
+        added.add(lineNumber + offset);
+      }
+      lineNumber += content.additions;
+    }
+  }
+  return added;
+}
+
+const SOURCE_PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'";
+
+/**
+ * Markdown pages allow inline HTML, which READMEs commonly use for badges and inline
+ * images. Scripts still cannot run: the page declares no script-src, so it falls back to
+ * default-src 'none'. form-action and base-uri are pinned for the same reason.
+ */
+const MARKDOWN_PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; form-action 'none'; base-uri 'none'";
+
+const MARKDOWN_EXTENSIONS = ['.md', '.markdown', '.mdown', '.mkd'];
+
+const markdown = new MarkdownIt({ html: true, linkify: true });
+
+function isMarkdownPath(path) {
+  const lower = path.toLowerCase();
+  return MARKDOWN_EXTENSIONS.some((extension) => lower.endsWith(extension));
+}
+
+const PAGE_BASE_CSS = `
+:root {
+  color-scheme: light dark;
+  --page-bg: #ffffff;
+  --page-fg: #18181b;
+  --page-muted: #52525b;
+  --page-border: rgba(0, 0, 0, 0.12);
+  --page-code-bg: rgba(0, 0, 0, 0.05);
+  --page-link: #2563eb;
+  --page-added-bg: rgba(46, 160, 67, 0.15);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page-bg: #09090b;
+    --page-fg: #f4f4f5;
+    --page-muted: #a1a1aa;
+    --page-border: rgba(255, 255, 255, 0.14);
+    --page-code-bg: rgba(255, 255, 255, 0.06);
+    --page-link: #7aa2f7;
+    --page-added-bg: rgba(46, 160, 67, 0.22);
+  }
+}
+html, body { margin: 0; background: var(--page-bg); color: var(--page-fg); }
+`;
+
+/* Scoped to .source so the line-box rules cannot leak into rendered markdown. */
+const SOURCE_CSS = `
+.source pre {
+  margin: 0;
+  padding: 12px 0;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  tab-size: 4;
+}
+.source code { display: block; width: max-content; min-width: 100%; }
+.line { display: block; padding: 0 16px; }
+.line.added { background: var(--page-added-bg); }
+`;
+
+const MARKDOWN_CSS = `
+.markdown {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 28px 20px 72px;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.6;
+}
+.markdown > :first-child { margin-top: 0; }
+.markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5 { margin: 1.5em 0 0.6em; line-height: 1.25; }
+.markdown h1 { font-size: 27px; padding-bottom: 0.3em; border-bottom: 1px solid var(--page-border); }
+.markdown h2 { font-size: 21px; padding-bottom: 0.3em; border-bottom: 1px solid var(--page-border); }
+.markdown h3 { font-size: 17px; }
+.markdown p, .markdown ul, .markdown ol, .markdown blockquote, .markdown table, .markdown pre { margin: 0 0 1em; }
+.markdown ul, .markdown ol { padding-left: 1.5em; }
+.markdown li + li { margin-top: 0.2em; }
+.markdown a { color: var(--page-link); }
+.markdown code {
+  padding: 0.15em 0.35em;
+  border-radius: 5px;
+  background: var(--page-code-bg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+}
+.markdown pre { overflow-x: auto; padding: 12px 14px; border: 1px solid var(--page-border); border-radius: 10px; background: var(--page-code-bg); }
+.markdown pre code { padding: 0; background: transparent; }
+.markdown blockquote { padding: 0 1em; border-left: 3px solid var(--page-border); color: var(--page-muted); }
+.markdown img { max-width: 100%; }
+.markdown table { border-collapse: collapse; }
+.markdown th, .markdown td { border: 1px solid var(--page-border); padding: 6px 10px; }
+.markdown hr { margin: 2em 0; border: 0; border-top: 1px solid var(--page-border); }
+`;
+
+function renderHtmlPage({ body, path, styles }) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(path)}</title>
+<style>${PAGE_BASE_CSS}${styles}</style>
+</head>
+<body>
+${body}
+</body>
+</html>`;
+}
+
+/**
+ * Render the whole file as a standalone read-only page. File contents are untrusted text,
+ * so every line and the title are escaped before being placed in the document.
+ */
+function renderFilePage({ addedLines, contents, path }) {
+  const lines = contents.replace(/\r\n/g, '\n').split('\n');
+  if (lines.length > 0 && lines[lines.length - 1] === '') {
+    lines.pop();
+  }
+
+  const body = lines
+    .map((line, index) => {
+      const className = addedLines.has(index + 1) ? 'line added' : 'line';
+      return `<span class="${className}">${escapeHtml(line)}</span>`;
+    })
+    .join('\n');
+
+  return renderHtmlPage({
+    body: `<div class="source"><pre><code>${body}</code></pre></div>`,
+    path,
+    styles: SOURCE_CSS,
+  });
+}
+
+/**
+ * Render markdown as a formatted page. Inline HTML is kept so READMEs keep their badges and
+ * inline images; the response CSP is what keeps scripts and form posts out of the page.
+ */
+function renderMarkdownPage({ contents, path }) {
+  return renderHtmlPage({
+    body: `<article class="markdown">${markdown.render(contents)}</article>`,
+    path,
+    styles: MARKDOWN_CSS,
+  });
+}
+
+function escapeHtml(value) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 function listenWithFallback(server, preferredPort, host, portExplicit, verbose) {

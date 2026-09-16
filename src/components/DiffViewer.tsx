@@ -2,10 +2,10 @@ import { CodeView } from '@pierre/diffs/react';
 import { useMemo } from 'react';
 
 import { REVIEW_UNSAFE_CSS } from '../constants';
-import type { ProjectedFileIdentity } from '../diffProjection';
+import type { ProjectedFile, ProjectedFileIdentity } from '../diffProjection';
 import { createDraftReview, isFileReviewTarget, reviewMatchesFile, saveDraftReview } from '../reviews';
 import type { DiffViewerModel } from '../useDiffViewerModel';
-import type { SavedReview } from '../types';
+import type { FileLinks, SavedReview, Source } from '../types';
 import { useThemeContext } from '../useTheme';
 import { DiffHeader } from './DiffHeader';
 import { DraftReviewBox, SavedReviewAnnotation } from './ReviewAnnotations';
@@ -98,7 +98,7 @@ export function DiffViewer({
                         enableLineSelection: true,
                         stickyHeaders: true,
                         unsafeCSS: REVIEW_UNSAFE_CSS,
-                        layout: { paddingTop: 12, paddingBottom: 32, gap: 12 },
+                        layout: { paddingTop: 12, paddingBottom: 32, gap: 0 },
                         onGutterUtilityClick: (range, context) => {
                             if (context.item.type !== 'diff') {
                                 return;
@@ -144,6 +144,7 @@ export function DiffViewer({
                         if (file == null) return null;
                         const fileReviews = fileReviewIndex.get(file.id) ?? [];
                         const fileDraftReview = draftReview != null && isFileReviewTarget(draftReview.target) && reviewMatchesFile(draftReview, file.id) ? draftReview : null;
+                        const fileLinks = getFileLinks({ activeCommitId, file, source: response?.source });
                         return (
                             <DiffHeader
                                 actions={{
@@ -158,6 +159,7 @@ export function DiffViewer({
                                 }}
                                 draftReview={fileDraftReview}
                                 file={file}
+                                fileLinks={fileLinks}
                                 fileReviews={fileReviews}
                                 onToggle={() => {
                                     setCollapsedIds((current) => {
@@ -177,4 +179,38 @@ export function DiffViewer({
             )}
         </main>
     );
+}
+
+/**
+ * Links for reading a file outside the diff: the rendered page (added lines highlighted)
+ * and the raw contents. Both are served from the same source adapters that hydrate diffs,
+ * so they are unavailable for GitHub targets and for deleted files, which have no new side.
+ */
+function getFileLinks({
+    activeCommitId,
+    file,
+    source,
+}: {
+    activeCommitId: string | null;
+    file: ProjectedFile;
+    source: Source | undefined;
+}): FileLinks {
+    if (source === 'github') {
+        return { hint: 'Full file contents are not available for GitHub pull request targets.', href: null, rawHref: null };
+    }
+    if (file.changeType === 'deleted') {
+        return { hint: 'This file was deleted, so there is no full file to open.', href: null, rawHref: null };
+    }
+
+    const search = new URLSearchParams({ path: file.path });
+    if (activeCommitId != null) {
+        search.set('commitId', activeCommitId);
+    }
+    const rawSearch = new URLSearchParams(search);
+    rawSearch.set('format', 'raw');
+    return {
+        hint: null,
+        href: `/api/file?${search.toString()}`,
+        rawHref: `/api/file?${rawSearch.toString()}`,
+    };
 }

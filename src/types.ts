@@ -40,6 +40,13 @@ export interface FileStats {
     files: number;
 }
 
+/** Links for reading a file outside the diff: the rendered page and the raw contents. */
+export interface FileLinks {
+    hint: string | null;
+    href: string | null;
+    rawHref: string | null;
+}
+
 export interface ReviewTarget {
     fileId: ProjectedFileIdentity;
     path: string;

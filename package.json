@@ -46,7 +46,8 @@
   },
   "dependencies": {
     "@pierre/diffs": "^1.2.7",
-    "express": "^5.2.0"
+    "express": "^5.2.0",
+    "markdown-it": "^15.0.2"
   },
   "devDependencies": {
     "@pierre/trees": "^1.0.0-beta.4",

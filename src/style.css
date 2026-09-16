@@ -152,7 +152,7 @@ button, input { font: inherit; }
   backdrop-filter: blur(16px);
 }
 
-.titleBlock { min-width: 220px; margin-right: auto; }
+.titleBlock { min-width: 180px; auto; }
 .eyebrow { color: var(--yd-muted); font-size: 11px; letter-spacing: 0.08em; }
 h1 { font-size: 16px; line-height: 1.25; margin: 1px 0 0; font-weight: 650; }
 h1 span { color: var(--yd-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 500; }
@@ -169,8 +169,10 @@ h1 span { color: var(--yd-muted); font-family: ui-monospace, SFMono-Regular, Men
 .plus { color: var(--yd-plus); }
 .minus { color: var(--yd-minus); }
 
+.controlsWrap { position: relative; display: flex; align-items: center; justify-content: flex-end; }
+/* Scoped past `.button` so the toggle stays hidden until the narrow-screen rules apply. */
+.controlsWrap .controlsToggle { display: none; }
 .controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-.shortcutHelp { position: relative; }
 .shortcutHelpButton {
   min-height: 28px;
   display: inline-flex;
@@ -361,7 +363,7 @@ h1 span { color: var(--yd-muted); font-family: ui-monospace, SFMono-Regular, Men
 .customFileHeader {
   width: 100%;
   min-width: 0;
-  height: 44px;
+  height: 34px;
   padding-inline: 16px;
   box-sizing: border-box;
   display: flex;
@@ -413,8 +415,7 @@ h1 span { color: var(--yd-muted); font-family: ui-monospace, SFMono-Regular, Men
 .renameArrow { color: var(--yd-subtle); font-size: 0.85em; }
 .fileHeaderActions { display: inline-flex; align-items: center; gap: 10px; flex: none; }
 .fileMeta { display: inline-flex; gap: 8px; align-items: center; color: var(--yd-muted); font-size: 12px; flex: none; }
-.fileReviewControls { display: inline-flex; align-items: center; gap: 6px; }
-.fileActions { display: inline-flex; align-items: center; gap: 6px; }
+.fileActionsMenu { display: inline-flex; align-items: center; }
 .fileReviewButton {
   border: 1px solid var(--yd-border);
   border-radius: 999px;
@@ -427,6 +428,43 @@ h1 span { color: var(--yd-muted); font-family: ui-monospace, SFMono-Regular, Men
   list-style: none;
 }
 .fileReviewButton:hover { background: var(--yd-surface-active); }
+.fileReviewButton:disabled { opacity: 0.5; cursor: not-allowed; }
+.fileReviewButton:disabled:hover { background: var(--yd-surface); }
+.fileMenuToggle { padding: 4px 9px; font-size: 13px; line-height: 1; }
+.fileMenuToggle[aria-expanded='true'] { background: var(--yd-surface-active); }
+/* Portaled to the body: each file item is its own stacking context, so a menu inside the
+   header cannot paint above the next file's content. Coordinates come from the toggle. */
+.fileMenu {
+  position: fixed;
+  z-index: 60;
+  min-width: 148px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--yd-popover-border);
+  border-radius: 12px;
+  background: var(--yd-popover-bg);
+  box-shadow: var(--yd-popover-shadow);
+}
+.fileMenuItem {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--yd-fg);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.fileMenuItem:hover { background: var(--yd-surface-active); }
+.fileMenuItem:disabled { opacity: 0.5; cursor: not-allowed; }
+.fileMenuItem:disabled:hover { background: transparent; }
 .fileReviewThread {
   padding: 0 16px 10px;
 }
@@ -505,7 +543,45 @@ h1 span { color: var(--yd-muted); font-family: ui-monospace, SFMono-Regular, Men
   .app,
   .app.treeViewHidden { grid-template-columns: 1fr; grid-template-rows: auto 180px minmax(0, 1fr); grid-template-areas: "toolbar" "sidebar" "viewer"; }
   .app.treeViewHidden { grid-template-rows: auto 36px minmax(0, 1fr); }
-  .toolbar { align-items: flex-start; flex-direction: column; }
+
+  /* On narrow screens every diff control collapses behind one menu button. */
+  .controlsWrap { width: 100%; }
+  .controlsWrap .controlsToggle { display: inline-flex; }
+  .controls {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 60;
+    width: max-content;
+    min-width: 200px;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 2px;
+    padding: 4px;
+    border: 1px solid var(--yd-popover-border);
+    border-radius: 12px;
+    background: var(--yd-popover-bg);
+    box-shadow: var(--yd-popover-shadow);
+  }
+  .controls[data-open] { display: flex; }
+  .controls .shortcutHelpButton,
+  .controls .button {
+    min-height: 32px;
+    justify-content: flex-start;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    padding: 6px 10px;
+  }
+  .controls .shortcutHelpButton:hover,
+  .controls .shortcutHelpButton[aria-expanded='true'],
+  .controls .button:hover,
+  .controls .button.active { background: var(--yd-surface-active); }
+  .controls .button.status-copied { background: var(--yd-success-bg); }
+  .controls .button.status-empty { background: var(--yd-warn-bg); }
+  .controls .button.status-error { background: var(--yd-error-bg); }
 
   .sidebar { border-right: 0; border-bottom: 1px solid var(--yd-border); padding: 8px; }
   .sidebarHidden { width: auto; transform: none; padding: 4px 8px; }
